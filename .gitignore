@@ -1,0 +1,39 @@
+# Always-ignore extensions
+*.diff
+*.err
+*.orig
+*.log
+*.out
+*.rej
+*.swo
+*.swp
+*.vi
+*~
+
+# OS or Editor folders
+.DS_Store
+Thumbs.db
+.cache
+.project
+.settings
+.tmproj
+*.esproj
+nbproject
+.idea
+.vscode
+
+# Internal project files and folders
+/bin
+/tools
+protoc.zip
+
+# Config files
+configs/config.api.yml
+configs/config.cms.yml
+configs/dbconfig.yml
+
+swagger-gen
+protoc
+
+.terraform
+terraform.tfstate
