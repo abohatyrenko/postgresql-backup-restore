@@ -1,6 +1,6 @@
 apiVersion: v2
-name: bucket-backup-restore
-description: A Helm chart for backup DO bucket (into AWS S3) and restore (to any S3-like storage)
+name: postgresql-backup-restore
+description: A Helm chart for backup/restore PG DB and store it in any S3-like storage
 
 # A chart can be either an 'application' or a 'library' chart.
 #

@@ -1,7 +1,7 @@
 {{/*
 Expand the name of the chart.
 */}}
-{{- define "bucket-backup-restore.name" -}}
+{{- define "postgresql-backup-restore.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
@@ -10,7 +10,7 @@ Create a default fully qualified app name.
 We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
 If release name contains chart name it will be used as a full name.
 */}}
-{{- define "bucket-backup-restore.fullname" -}}
+{{- define "postgresql-backup-restore.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -26,16 +26,16 @@ If release name contains chart name it will be used as a full name.
 {{/*
 Create chart name and version as used by the chart label.
 */}}
-{{- define "bucket-backup-restore.chart" -}}
+{{- define "postgresql-backup-restore.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Common labels
 */}}
-{{- define "bucket-backup-restore.labels" -}}
-helm.sh/chart: {{ include "bucket-backup-restore.chart" . }}
-{{ include "bucket-backup-restore.selectorLabels" . }}
+{{- define "postgresql-backup-restore.labels" -}}
+helm.sh/chart: {{ include "postgresql-backup-restore.chart" . }}
+{{ include "postgresql-backup-restore.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -45,17 +45,17 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{/*
 Selector labels
 */}}
-{{- define "bucket-backup-restore.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "bucket-backup-restore.name" . }}
+{{- define "postgresql-backup-restore.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "postgresql-backup-restore.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
 Create the name of the service account to use
 */}}
-{{- define "bucket-backup-restore.serviceAccountName" -}}
+{{- define "postgresql-backup-restore.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
-{{- default (include "bucket-backup-restore.fullname" .) .Values.serviceAccount.name }}
+{{- default (include "postgresql-backup-restore.fullname" .) .Values.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}

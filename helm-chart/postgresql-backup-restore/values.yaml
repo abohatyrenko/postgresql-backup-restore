@@ -1,9 +1,9 @@
-# Default values for bucket-backup-restore.
+# Default values for postgresql-backup-restore.
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
 image:
-  # repository: scorum/duels-bucket-backup-restore # TODO: UPD
+  # repository: aboahtyrenko/postgresql-backup-restore # TODO: UPD
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: latest
@@ -25,7 +25,7 @@ serviceAccount:
 
 jobAnnotations: {}
 
-resources:
+resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious
   # choice for the user. This also increases chances charts run on environments with little
   # resources, such as Minikube. If you do want to specify resources, uncomment the following
@@ -33,9 +33,9 @@ resources:
   # limits:
   #   cpu: 100m
   #   memory: 128Mi
-  requests:
-    cpu: 100m
-    memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
 
 nodeSelector: {}
 
@@ -46,10 +46,17 @@ args: ["/bin/echo 'choose script' && ls -lah /opt/ &&  /bin/sleep 15"]
 secret:
   aws_access_key_id: ""
   aws_secret_access_key: ""
-  rclone: ""
 
-env: {}
-#  AWS_DEFAULT_REGION: ""
+dbPasswordSecret:
+  backup_secret:
+    enabled: false
+    name: ""
+  restore_secret:
+    enabled: false
+    name: ""
+
+env:
+  AWS_DEFAULT_REGION: eu-central-1
 
 notificationSlack:
   url: ""

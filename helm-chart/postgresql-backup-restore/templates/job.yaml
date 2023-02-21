@@ -1,9 +1,9 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: "{{ .Release.Name }}-notification-install"
+  name: "{{ .Release.Name }}-notify-install"
   labels:
-    {{- include "bucket-backup-restore.labels" . | nindent 4 }}
+    {{- include "postgresql-backup-restore.labels" . | nindent 4 }}
   annotations:
     "helm.sh/hook": post-install, post-upgrade
     "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
@@ -27,9 +27,9 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: "{{ .Release.Name }}-notification-rollback"
+  name: "{{ .Release.Name }}-notify-rollback"
   labels:
-    {{- include "bucket-backup-restore.labels" . | nindent 4 }}
+    {{- include "postgresql-backup-restore.labels" . | nindent 4 }}
   annotations:
     "helm.sh/hook": post-rollback
     "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
