@@ -1,5 +1,7 @@
 # PostgreSQL backup/restore script
 
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/postgresql-backup-restore)](https://artifacthub.io/packages/search?repo=postgresql-backup-restore)
+
 This project contains backup/restore script for PostgrSQL DB's (DO) and store it in S3 bucket (AWS)
 
 ## Script
