@@ -37,18 +37,30 @@ spec:
               - name: AWS_ACCESS_KEY_ID
                 valueFrom:
                   secretKeyRef:
+                    {{- if .Values.existingSecret }}
+                    name: {{ .Values.existingSecret }}
+                    {{- else }}
                     name: {{ include "postgresql-backup-restore.fullname" . }}
+                    {{- end }}
                     key: aws_access_key_id
               - name: AWS_SECRET_ACCESS_KEY
                 valueFrom:
                   secretKeyRef:
+                    {{- if .Values.existingSecret }}
+                    name: {{ .Values.existingSecret }}
+                    {{- else }}
                     name: {{ include "postgresql-backup-restore.fullname" . }}
+                    {{- end }}
                     key: aws_secret_access_key
               {{- if .Values.dbPasswordSecret.backup_secret.enabled }}
               - name: PG_PASS_BACKUP
                 valueFrom:
                   secretKeyRef:
+                    {{- if .Values.existingSecret }}
+                    name: {{ .Values.existingSecret }}
+                    {{- else }}
                     name: {{ .Values.dbPasswordSecret.backup_secret.name }}
+                    {{- end }}
                     key: postgresql-backup.txt
                     optional: true
               {{- end }}
@@ -56,7 +68,11 @@ spec:
               - name: PG_PASS_RESTORE
                 valueFrom:
                   secretKeyRef:
+                    {{- if .Values.existingSecret }}
+                    name: {{ .Values.existingSecret }}
+                    {{- else }}
                     name: {{ .Values.dbPasswordSecret.restore_secret.name }}
+                    {{- end }}
                     key: postgresql-restore.txt
                     optional: true
               {{- end }}
