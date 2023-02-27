@@ -56,7 +56,13 @@ dbPasswordSecret:
     name: ""
 
 env: {}
-#  AWS_REGION: ""
+# AWS_REGION: ""
+# DB_BACKUP: ""
+# POSTGRESQL_BACKUP_HOST: ""
+# POSTGRESQL_BACKUP_PORT: ""
+# POSTGRESQL_BACKUP_USER: ""
+# S3_BUCKET: ""
+# S3_ENDPOINT: ""
 
 notificationSlack:
   url: ""
