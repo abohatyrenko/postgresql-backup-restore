@@ -6,7 +6,6 @@ on:
       - 'main'
     tags:
       - v0.*
-      - v1.*
 
 jobs:
   docker:
