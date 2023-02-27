@@ -12,8 +12,8 @@ This project contains backup/restore script for PostgrSQL DB's (DO) and store it
 ```bash
 $ git clone https://github.com/abohatyrenko/postgresql-backup-restore.git
 $ cd postgresql-backup-restore
-$ chmod +x backup_restore_do.sh && chmod +x backup_restore_do.sh
-$ ./backup_restore_do.sh
+$ chmod +x pg_backup_restore.sh && chmod +x pg_backup_restore.sh
+$ ./pg_backup_restore.sh
 ```
 
 
