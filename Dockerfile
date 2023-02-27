@@ -14,8 +14,8 @@ RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2
 && rm -f awscliv2.zip \
 && rm -rf /var/lib/apt/lists/*
 
-COPY ./backup_restore_do.sh /opt/backup_restore_do.sh
+COPY ./pg_backup_restore.sh /opt/pg_backup_restore.sh
 
-RUN chmod +x  /opt/backup_restore_do.sh
+RUN chmod +x  /opt/pg_backup_restore.sh
 
 CMD [ "/opt/backup_restore.sh" ]

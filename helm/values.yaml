@@ -3,14 +3,12 @@
 # Declare variables to be passed into your templates.
 
 image:
-  # repository: aboahtyrenko/postgresql-backup-restore # TODO: UPD
+  repository: aboahtyrenko/postgresql-backup-restore
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: latest
+  tag: ""
 
-imagePullSecrets:
-  - name: regcred
-
+imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
@@ -55,8 +53,8 @@ dbPasswordSecret:
     enabled: false
     name: ""
 
-env:
-  AWS_DEFAULT_REGION: eu-central-1
+env: {}
+#  AWS_DEFAULT_REGION: ""
 
 notificationSlack:
   url: ""
