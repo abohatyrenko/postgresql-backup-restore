@@ -1,9 +1,8 @@
-name: ci
+name: CI
 
 on:
   push:
-    tags:
-      - v0.*
+    tags: [ v* ]
 
 jobs:
   docker:
