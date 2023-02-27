@@ -34,9 +34,9 @@ then
   exit 1
 fi
 
-if [[ -z "$AWS_DEFAULT_REGION" ]]
+if [[ -z "$AWS_REGION" ]]
 then
-  echo "`date -R` : ENV var missing: AWS_DEFAULT_REGION"
+  echo "`date -R` : ENV var missing: AWS_REGION"
   exit 1
 fi
 
