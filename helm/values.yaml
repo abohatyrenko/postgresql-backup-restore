@@ -46,6 +46,8 @@ existingSecret: ""
 secrets:
   aws_access_key_id: ""
   aws_secret_access_key: ""
+  postgresql_backup: ""
+  postgresql_restore: ""
 
 # alternative DB pass flow to protect from miss restore
 dbPasswordSecret:
