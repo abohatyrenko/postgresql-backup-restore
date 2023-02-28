@@ -24,6 +24,14 @@ POSTGRESQL_RESTORE_HOST=${POSTGRESQL_RESTORE_HOST:=*ondigitalocean.com}
 POSTGRESQL_RESTORE_USER=${POSTGRESQL_RESTORE_USER:=*}
 POSTGRESQL_RESTORE_PORT=${POSTGRESQL_RESTORE_PORT:=25060}
 
+# static vars
+BACKUP_DIR=/tmp/backup
+RESTORE_DIR=/tmp/restore
+ARTIFACT_NAME="${DB_BACKUP}-$(date +%Y-%m-%d).tar.gz"
+S3_BUCKET_BACKUP_PREFIX="$DB_BACKUP"
+S3_BUCKET_RESTORE_PREFIX="$DB_TO_RESTORE"
+
+
 if [[ -z "$AWS_ACCESS_KEY_ID" ]]
 then
   echo "`date -R` : ENV var missing: AWS_ACCESS_KEY_ID"
@@ -41,13 +49,6 @@ then
   echo "`date -R` : ENV var missing: AWS_REGION"
   exit 1
 fi
-
-# static vars
-BACKUP_DIR=/tmp/backup
-RESTORE_DIR=/tmp/restore
-ARTIFACT_NAME="${DB_BACKUP}-$(date +%Y-%m-%d).tar.gz"
-S3_BUCKET_BACKUP_PREFIX="$DB_BACKUP"
-S3_BUCKET_RESTORE_PREFIX="$DB_TO_RESTORE"
 
 # By default with restore argument the latest backup will be uploaded from S3 bucket.
 # As a second argument you can pass specific backup file name to restore. Example (if DB_TO_RESTORE=*) - "*-2022-08-01.tar.gz"
@@ -81,7 +82,7 @@ case $1 in
     fi
 
     echo "`date -R` : Uploading $BACKUP_DIR/$ARTIFACT_NAME to $S3_BUCKET"
-    aws s3 --endpoint-url="$S3_ENDPOINT" cp --no-progress $BACKUP_DIR/$ARTIFACT_NAME $S3_BUCKET/$S3_BUCKET_BACKUP_PREFIX/
+    aws s3 --endpoint-url="$S3_ENDPOINT" cp --no-progress $BACKUP_DIR/$ARTIFACT_NAME $S3_BUCKET
 
     ## Check if backup file size is not 0 Bytes
 
