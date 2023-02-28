@@ -12,8 +12,8 @@ This project contains backup/restore script for PostgrSQL DB's (DO) and store it
 ```bash
 $ git clone https://github.com/abohatyrenko/postgresql-backup-restore.git
 $ cd postgresql-backup-restore
-$ chmod +x pg_backup_restore.sh && chmod +x pg_backup_restore.sh
-$ ./pg_backup_restore.sh
+$ chmod +x pg_backup_restore.sh
+$ ./pg_backup_restore.sh backup
 ```
 
 
@@ -35,9 +35,12 @@ DB_USER=${DB_TO_RESTORE}
 POSTGRESQL_BACKUP_HOST=${POSTGRESQL_BACKUP_HOST:=*ondigitalocean.com}
 POSTGRESQL_BACKUP_USER=${POSTGRESQL_BACKUP_USER:=*}
 POSTGRESQL_BACKUP_PORT=${POSTGRESQL_BACKUP_PORT:=25060}
+PG_PASS_BACKUP=${PG_PASS_BACKUP:=*}
+
 #restore
 POSTGRESQL_RESTORE_HOST=${POSTGRESQL_RESTORE_HOST:=*}
 POSTGRESQL_RESTORE_USER=${POSTGRESQL_RESTORE_USER:=*}
 POSTGRESQL_RESTORE_PORT=${POSTGRESQL_RESTORE_PORT:=25060}
+PG_PASS_RESTORE=${PG_PASS_RESTORE:=*}
 ```
 
