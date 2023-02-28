@@ -61,7 +61,7 @@ spec:
                     {{- else }}
                     name: {{ .Values.dbPasswordSecret.backup_secret.name }}
                     {{- end }}
-                    key: postgresql-backup
+                    key: postgresql_backup
                     optional: true
               {{- end }}
               {{- if .Values.dbPasswordSecret.restore_secret.enabled }}
@@ -73,7 +73,7 @@ spec:
                     {{- else }}
                     name: {{ .Values.dbPasswordSecret.restore_secret.name }}
                     {{- end }}
-                    key: postgresql-restore
+                    key: postgresql_restore
                     optional: true
               {{- end }}
             {{- if .Values.env }}
