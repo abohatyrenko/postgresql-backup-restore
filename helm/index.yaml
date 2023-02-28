@@ -3,13 +3,13 @@ entries:
   postgresql-backup-restore:
   - apiVersion: v2
     appVersion: 0.0.1
-    created: "2023-02-28T14:04:02.830598+03:00"
+    created: "2023-02-28T14:17:01.179807+03:00"
     description: A Helm chart for backup/restore PG DB and store it in any S3-like
       storage
-    digest: f815fb87154813b795ab27cb4f7e9803f510fce9a431edbe6f35922934e03434
+    digest: 4a45b5c13369a8ef0d7281e01477d17124b06cb4666f360d142ce73700951e06
     name: postgresql-backup-restore
     type: application
     urls:
     - https://abohatyrenko.github.io/postgresql-backup-restore/helm/packages/postgresql-backup-restore-0.1.0.tgz
     version: 0.1.0
-generated: "2023-02-28T14:04:02.829814+03:00"
+generated: "2023-02-28T14:17:01.175253+03:00"
