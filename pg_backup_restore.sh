@@ -88,7 +88,7 @@ case $1 in
 
     echo "`date -R` : checking postgresql backup size"
 
-    SIZE=$(aws s3 --endpoint-url="$S3_ENDPOINT" ls $S3_BUCKET/$DB_BACKUP --recursive | sort | tail -n 1 | awk '{print $3}');
+    SIZE=$(aws s3 --endpoint-url="$S3_ENDPOINT" ls $S3_BUCKET/$S3_BUCKET_BACKUP_PREFIX/$ARTIFACT_NAME --recursive | sort | tail -n 1 | awk '{print $3}');
 
     if [ "$SIZE" -gt "1" ];
       then
