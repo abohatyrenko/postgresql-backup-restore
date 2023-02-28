@@ -47,6 +47,7 @@ secrets:
   aws_access_key_id: ""
   aws_secret_access_key: ""
 
+# alternative DB pass flow to protect from miss restore
 dbPasswordSecret:
   backup_secret:
     enabled: false
@@ -56,13 +57,16 @@ dbPasswordSecret:
     name: ""
 
 env: {}
-# AWS_REGION: ""
-# DB_BACKUP: ""
-# POSTGRESQL_BACKUP_HOST: ""
-# POSTGRESQL_BACKUP_PORT: ""
-# POSTGRESQL_BACKUP_USER: ""
-# S3_BUCKET: ""
-# S3_ENDPOINT: ""
+  # AWS_REGION: ""
+  # DB_BACKUP: ""
+  # POSTGRESQL_BACKUP_HOST: ""
+  # POSTGRESQL_BACKUP_PORT: ""
+  # POSTGRESQL_BACKUP_USER: ""
+  # S3_BUCKET: ""
+  # S3_ENDPOINT: ""
+  # POSTGRESQL_RESTORE_HOST: ""
+  # POSTGRESQL_RESTORE_PORT: ""
+  # POSTGRESQL_RESTORE_USER: ""
 
 notificationSlack:
   url: ""

@@ -56,24 +56,24 @@ spec:
               - name: PG_PASS_BACKUP
                 valueFrom:
                   secretKeyRef:
-                    {{- if .Values.dbPasswordSecret.backup_secret.name }}
-                    name: {{ .Values.dbPasswordSecret.backup_secret.name }}
-                    {{- else }}
+                    {{- if .Values.existingSecret }}
                     name: {{ .Values.existingSecret }}
+                    {{- else }}
+                    name: {{ .Values.dbPasswordSecret.backup_secret.name }}
                     {{- end }}
-                    key: postgresql-backup.txt
+                    key: postgresql-backup
                     optional: true
               {{- end }}
               {{- if .Values.dbPasswordSecret.restore_secret.enabled }}
               - name: PG_PASS_RESTORE
                 valueFrom:
                   secretKeyRef:
-                    {{- if .Values.dbPasswordSecret.restore_secret.name }}
-                    name: {{ .Values.dbPasswordSecret.restore_secret.name }}
-                    {{- else }}
+                    {{- if .Values.existingSecret }}
                     name: {{ .Values.existingSecret }}
+                    {{- else }}
+                    name: {{ .Values.dbPasswordSecret.restore_secret.name }}
                     {{- end }}
-                    key: postgresql-restore.txt
+                    key: postgresql-restore
                     optional: true
               {{- end }}
             {{- if .Values.env }}
