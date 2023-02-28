@@ -82,7 +82,7 @@ case $1 in
     fi
 
     echo "`date -R` : Uploading $BACKUP_DIR/$ARTIFACT_NAME to $S3_BUCKET"
-    aws s3 --endpoint-url="$S3_ENDPOINT" cp --no-progress $BACKUP_DIR/$ARTIFACT_NAME $S3_BUCKET
+    aws s3 --endpoint-url="$S3_ENDPOINT" cp --no-progress $BACKUP_DIR/$ARTIFACT_NAME $S3_BUCKET/$S3_BUCKET_BACKUP_PREFIX/
 
     ## Check if backup file size is not 0 Bytes
 
