@@ -76,7 +76,6 @@ spec:
                     name: {{ .Values.dbPasswordSecret.restore_secret.name }}
                     {{- else }}
                     name: {{ include "postgresql-backup-restore.fullname" . }}
-
                     {{- end }}
                     key: postgresql_restore
                     optional: true
