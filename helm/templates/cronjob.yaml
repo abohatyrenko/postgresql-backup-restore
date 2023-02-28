@@ -58,8 +58,10 @@ spec:
                   secretKeyRef:
                     {{- if .Values.existingSecret }}
                     name: {{ .Values.existingSecret }}
-                    {{- else }}
+                    {{- else if }}
                     name: {{ .Values.dbPasswordSecret.backup_secret.name }}
+                    {{- else }}
+                    name: {{ include "postgresql-backup-restore.fullname" . }}
                     {{- end }}
                     key: postgresql_backup
                     optional: true
@@ -70,8 +72,11 @@ spec:
                   secretKeyRef:
                     {{- if .Values.existingSecret }}
                     name: {{ .Values.existingSecret }}
-                    {{- else }}
+                    {{- else if }}
                     name: {{ .Values.dbPasswordSecret.restore_secret.name }}
+                    {{- else }}
+                    name: {{ include "postgresql-backup-restore.fullname" . }}
+
                     {{- end }}
                     key: postgresql_restore
                     optional: true
