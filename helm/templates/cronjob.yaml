@@ -52,7 +52,6 @@ spec:
                      name: {{ include "postgresql-backup-restore.fullname" . }}
                     {{- end }}
                      key: aws_secret_access_key
-              {{- if .Values.dbPasswordSecret.backup_secret.enabled }}
               - name: PG_PASS_BACKUP
                 valueFrom:
                   secretKeyRef:
@@ -65,8 +64,6 @@ spec:
                     {{- end }}
                       key: postgresql_backup
                       optional: true
-              {{- end }}
-              {{- if .Values.dbPasswordSecret.restore_secret.enabled }}
               - name: PG_PASS_RESTORE
                 valueFrom:
                   secretKeyRef:
@@ -79,7 +76,6 @@ spec:
                     {{- end }}
                      key: postgresql_restore
                      optional: true
-              {{- end }}
             {{- if .Values.env }}
             {{- range $key, $value := .Values.env }}
               - name: {{ $key }}
