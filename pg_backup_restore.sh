@@ -5,7 +5,7 @@
 set -e
 
 # dynamic vars
-S3_BUCKET=${S3_BUCKET:=s3://backup/postgresql/}
+S3_BUCKET=${S3_BUCKET:=s3://backup/postgresql}
 S3_ENDPOINT=${S3_ENDPOINT:=https://s3.amazonaws.com}
 AWS_REGION=${AWS_REGION:=eu-central-1}
 
@@ -71,7 +71,6 @@ case $1 in
     echo "`date -R` : Making backup of $DB_BACKUP from $POSTGRESQL_BACKUP_HOST:$POSTGRESQL_BACKUP_PORT"
     # NOTE: for external DO db connection will be needed PGSSLROOTCERT=/pathto/ca-certificate.crt
     PGPASSWORD=$PG_PASS_BACKUP PGSSLMODE=allow pg_dump --verbose --no-owner --host=$POSTGRESQL_BACKUP_HOST --port=$POSTGRESQL_BACKUP_PORT --username=$POSTGRESQL_BACKUP_USER -Fc --file $ARTIFACT_NAME -n public $DB_BACKUP
-
     ## Check if local backup file exists
 
     if [ -f "$BACKUP_DIR/$ARTIFACT_NAME" ]; then
@@ -82,7 +81,7 @@ case $1 in
     fi
 
     echo "`date -R` : Uploading $BACKUP_DIR/$ARTIFACT_NAME to $S3_BUCKET"
-    aws s3 --endpoint-url="$S3_ENDPOINT" cp --no-progress $BACKUP_DIR/$ARTIFACT_NAME $S3_BUCKET
+    aws s3 --endpoint-url="$S3_ENDPOINT" cp --no-progress $BACKUP_DIR/$ARTIFACT_NAME $S3_BUCKET/
 
     ## Check if backup file size is not 0 Bytes
 
