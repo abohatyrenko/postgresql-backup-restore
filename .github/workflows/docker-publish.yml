@@ -25,7 +25,7 @@ jobs:
             abohatyrenko/postgresql-backup-restore
           # generate Docker tags based on the following events/attributes
           tags: |
-            type=semver,pattern={{major}}
+            type=semver,pattern={{version}}
       -
         name: Set up QEMU
         uses: docker/setup-qemu-action@v2
