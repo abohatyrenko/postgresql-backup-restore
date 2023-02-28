@@ -5,7 +5,7 @@
 set -e
 
 # dynamic vars
-S3_BUCKET=${S3_BUCKET:=s3://backup/postgresql}
+S3_BUCKET=${S3_BUCKET:=s3://backup/postgresql/}
 S3_ENDPOINT=${S3_ENDPOINT:=https://s3.amazonaws.com}
 AWS_REGION=${AWS_REGION:=eu-central-1}
 
@@ -82,7 +82,7 @@ case $1 in
     fi
 
     echo "`date -R` : Uploading $BACKUP_DIR/$ARTIFACT_NAME to $S3_BUCKET"
-    aws s3 --endpoint-url="$S3_ENDPOINT" cp --no-progress $BACKUP_DIR/$ARTIFACT_NAME $S3_BUCKET/$S3_BUCKET_BACKUP_PREFIX/
+    aws s3 --endpoint-url="$S3_ENDPOINT" cp --no-progress $BACKUP_DIR/$ARTIFACT_NAME $S3_BUCKET
 
     ## Check if backup file size is not 0 Bytes
 
@@ -98,7 +98,7 @@ case $1 in
         exit 1
     fi
 
-    echo "`date -R` : Finished: Uploaded $ARTIFACT_NAME to $S3_BUCKET/$S3_BUCKET_BACKUP_PREFIX/"
+    echo "`date -R` : Finished: Uploaded $ARTIFACT_NAME to $S3_BUCKET/$S3_BUCKET_BACKUP_PREFIX"
 
     echo "`date -R` : Cleanup : removing $BACKUP_DIR/$ARTIFACT_NAME"
 
