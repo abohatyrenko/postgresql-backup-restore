@@ -60,9 +60,14 @@ dbPasswordSecret:
 
 env: {}
   # AWS_REGION: ""
+  # AWS_ACCESS_KEY_ID: ""
+  # AWS_SECRET_ACCESS_KEY: ""
   # DB_BACKUP: ""
   # S3_BUCKET: ""
   # S3_ENDPOINT: ""
+  # DB_BACKUP: ""
+  # DB_TO_RESTORE: ""
+  # DB_USER: ""
   # POSTGRESQL_BACKUP_HOST: ""
   # POSTGRESQL_BACKUP_PORT: ""
   # POSTGRESQL_BACKUP_USER: ""
