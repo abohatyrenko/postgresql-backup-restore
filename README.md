@@ -43,14 +43,14 @@ S3_BUCKET_RESTORE_PREFIX="$DB_TO_RESTORE"
 
 
 ---
-## docker image:
+## Docker image:
 ```shell
 docker build -t abohatyrenko/postgresql-backup-restore .
 docker pull abohatyrenko/postgresql-backup-restore
 ```
 
 ---
-## helm chart
+## Helm chart
 
 ### Usage:
 Go to helm [Readme](helm/README.md#Usage)
