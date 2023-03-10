@@ -2,7 +2,7 @@
 
 #!/bin/bash
 
-set -eu
+set -e
 
 # Environment variables are placed here according priority, any changes could lead to issues
 
