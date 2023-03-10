@@ -8,7 +8,8 @@ RUN apt-get update && \
     unzip \
     wget
 
-RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-2.8.7.zip" -o "awscliv2.zip" && \
+# pinned latest cli version (10.03.23)
+RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-2.11.1.zip" -o "awscliv2.zip" && \
     unzip awscliv2.zip && \
     ./aws/install \
 && rm -f awscliv2.zip \
