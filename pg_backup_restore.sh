@@ -33,20 +33,17 @@ POSTGRESQL_RESTORE_USER=${POSTGRESQL_RESTORE_USER:=example_user}
 POSTGRESQL_RESTORE_PORT=${POSTGRESQL_RESTORE_PORT:=25060}
 
 
-if [ -z "$AWS_ACCESS_KEY_ID" ]
-then
+if [ -z "$AWS_ACCESS_KEY_ID" ]; then
   echo "`date -R` : ENV var missing: AWS_ACCESS_KEY_ID"
   exit 1
 fi
 
-if [ -z "$AWS_SECRET_ACCESS_KEY" ]
-then
+if [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
   echo "`date -R` : ENV var missing: AWS_SECRET_ACCESS_KEY"
   exit 1
 fi
 
-if [ -z "$AWS_REGION" ]
-then
+if [ -z "$AWS_REGION" ]; then
   echo "`date -R` : ENV var missing: AWS_REGION"
   exit 1
 fi
@@ -55,14 +52,25 @@ fi
 # As a second argument you can pass specific backup file name to restore. Example (if RESTORE_DATABASE_NAME=*) - "*-2022-08-01.tar.gz"
 LATEST_BACKUP_FILE=`aws s3 ls $S3_BUCKET_PATH/$RESTORE_DATABASE_NAME/$S3_BUCKET_PATH_RESTORE_PREFIX --endpoint-url $S3_ENDPOINT | sort | tail -n 1 | awk '{print $4}'`
 
-case $1 in
+check_vacuum() {
+  VACUUM_COUNT=$(psql -h $POSTGRESQL_BACKUP_HOST -p $POSTGRESQL_BACKUP_PORT -U $POSTGRESQL_BACKUP_USER -d $BACKUP_DATABASE_NAME -t -c "SELECT count(*) FROM pg_stat_activity WHERE query LIKE 'vacuum%' AND state = 'active';")
 
+  if [ "$VACUUM_COUNT" -ne 0 ]; then
+    echo "`date -R` : Active VACUUM process detected. Skipping backup..."
+    exit 1
+  else
+    echo "`date -R` : No active VACUUM processes. Proceeding with the backup..."
+  fi
+}
+
+case $1 in
   backup)
-    if [ -z "$PG_PASS_BACKUP" ]
-    then
+    if [ -z "$PG_PASS_BACKUP" ]; then
       echo "`date -R` : ENV var missing: PG_PASS_BACKUP"
       exit 1
     fi
+
+    check_vacuum
 
     echo "`date -R` : Backing up $BACKUP_DATABASE_NAME to $BACKUP_DIR"
     mkdir -p $BACKUP_DIR
@@ -75,10 +83,10 @@ case $1 in
 
     ## Check if local backup file exists
     if [ -f "$BACKUP_DIR/$ARTIFACT_NAME" ]; then
-        echo "`date -R` : $BACKUP_DIR/$ARTIFACT_NAME exists, moving to upload step"
+      echo "`date -R` : $BACKUP_DIR/$ARTIFACT_NAME exists, moving to upload step"
     else
-        echo "`date -R` : $BACKUP_DIR/$ARTIFACT_NAME does not exist, exiting"
-        exit 1
+      echo "`date -R` : $BACKUP_DIR/$ARTIFACT_NAME does not exist, exiting"
+      exit 1
     fi
 
     echo "`date -R` : Uploading $ARTIFACT_NAME to $S3_BUCKET_PATH/$S3_BUCKET_PATH_BACKUP_PREFIX/"
@@ -89,8 +97,7 @@ case $1 in
     echo "`date -R` : Checking postgresql backup size"
     SIZE=$(aws s3 ls $S3_TARGET --region $AWS_REGION --endpoint-url $S3_ENDPOINT | sort | tail -n 1 | awk '{print $3}');
 
-    if [ "$SIZE" -gt "1" ];
-      then
+    if [ "$SIZE" -gt "1" ]; then
         echo "`date -R` : size is $SIZE its ok"
       else
         echo "`date -R` : size is $SIZE its NOT ok"
@@ -103,17 +110,15 @@ case $1 in
 
     rm -rf $BACKUP_DIR/$ARTIFACT_NAME
 
-  ;;
+    ;;
 
   restore)
-    if [ -z "$PG_PASS_RESTORE" ]
-    then
+    if [ -z "$PG_PASS_RESTORE" ]; then
       echo "`date -R` : ENV var missing: PG_PASS_RESTORE"
       exit 1
     fi
 
-    if [ -z "$2" ]
-    then
+    if [ -z "$2" ]; then
       echo "`date -R` : No backup file name provided as 2nd arg, please follow the naming - "${BACKUP_DATABASE_NAME}-$(date +%Y-%m-%d).tar.gz" if needed"
       echo "`date -R` : Using Latest backup: $LATEST_BACKUP_FILE"
     fi
@@ -135,12 +140,10 @@ case $1 in
 
     rm -rf ${2:-$LATEST_BACKUP_FILE}
 
-  ;;
-
+    ;;
 
   *)
     echo "Possible options: backup/restore"
     exit 1
-  ;;
-
+    ;;
 esac

@@ -3,7 +3,18 @@ entries:
   postgresql-backup-restore:
   - apiVersion: v2
     appVersion: 0.1.1
-    created: "2023-03-10T11:21:36.796843+03:00"
+    created: "2024-07-17T15:55:19.91574+03:00"
+    description: A Helm chart for backup/restore PG DB and store it in any S3-like
+      storage
+    digest: 37a1974169e33062595a2f96363abbfcf35815210aa7b861ead5c6f70fa070b5
+    name: postgresql-backup-restore
+    type: application
+    urls:
+    - https://abohatyrenko.github.io/postgresql-backup-restore/helm/packages/postgresql-backup-restore-0.1.3.tgz
+    version: 0.1.3
+  - apiVersion: v2
+    appVersion: 0.1.1
+    created: "2024-07-17T15:55:19.915093+03:00"
     description: A Helm chart for backup/restore PG DB and store it in any S3-like
       storage
     digest: d2cf0bb1c6aa774fb76b8cfa887bc185aaec62e27e6194c2ecdef01563191f1c
@@ -14,7 +25,7 @@ entries:
     version: 0.1.2
   - apiVersion: v2
     appVersion: 0.0.1
-    created: "2023-03-10T11:21:36.795997+03:00"
+    created: "2024-07-17T15:55:19.914644+03:00"
     description: A Helm chart for backup/restore PG DB and store it in any S3-like
       storage
     digest: d52488c141b10dee3545e4572efa9e19c4b003ad16a0ff4f34ba9c8f2c420481
@@ -25,7 +36,7 @@ entries:
     version: 0.1.1
   - apiVersion: v2
     appVersion: 0.0.1
-    created: "2023-03-10T11:21:36.795301+03:00"
+    created: "2024-07-17T15:55:19.914293+03:00"
     description: A Helm chart for backup/restore PG DB and store it in any S3-like
       storage
     digest: e228f663cfd18ecd02ce0e545253f50c6d534662712e834eca665ff5f24cb626
@@ -34,4 +45,4 @@ entries:
     urls:
     - https://abohatyrenko.github.io/postgresql-backup-restore/helm/packages/postgresql-backup-restore-0.1.0.tgz
     version: 0.1.0
-generated: "2023-03-10T11:21:36.793718+03:00"
+generated: "2024-07-17T15:55:19.913747+03:00"
