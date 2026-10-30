@@ -135,11 +135,27 @@ Test your restores regularly, e.g. with a scheduled restore into a scratch datab
 
 See the [chart README](helm/README.md).
 
+## What is tested
+
+Every CI run executes [`test/e2e.sh`](test/e2e.sh) against real PostgreSQL servers and an S3-compatible
+server ([SeaweedFS](https://github.com/seaweedfs/seaweedfs)) in Docker, in both version directions (13 → 17, 17 → 16):
+
+- encrypted and plain backup/restore, retention, restore of the latest or a specific backup, repeated restores
+- restore into an older server, rollback of a restore that fails midway
+- restore guard, missing decryption key and bad credentials fail the job
+- TLS: `verify-full` with a CA certificate; an unknown CA, a host name mismatch and a server without TLS are rejected
+- AWS credentials from a shared credentials file instead of environment variables; no credentials fail the job
+
+The Helm chart is linted and validated with kubeconform, and was tested manually in a kind cluster.
+
+Not tested yet (should work, feedback welcome): DigitalOcean Spaces and other hosted S3-compatible storage,
+managed PostgreSQL services, IRSA / EKS Pod Identity (credentials come from the standard AWS CLI credential chain).
+
 ## Development
 
 ```sh
 docker build -t postgresql-backup-restore .
-test/e2e.sh   # backup/restore against real PostgreSQL servers and S3 (SeaweedFS) in Docker
+test/e2e.sh   # see "What is tested" above
 ```
 
 Older PostgreSQL client versions: `docker build --build-arg PG_VERSION=16 .`
