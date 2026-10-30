@@ -165,18 +165,27 @@ Older PostgreSQL client versions: `docker build --build-arg PG_VERSION=16 .`
 
 ### Release
 
-1. Push a `vX.Y.Z` tag: CI runs the tests and publishes the multi-arch image to Docker Hub.
-   Release candidates (`vX.Y.Z-rc.N`) are published without the `latest` and `X.Y` tags.
-2. Bump `version` / `appVersion` in `helm/Chart.yaml`, then publish the chart:
+The chart and the image share one version: `X.Y.Z` means chart `X.Y.Z` with image `X.Y.Z`.
 
-```sh
-cd helm/packages
-helm package ../
-cd ../
-helm repo index . --url https://abohatyrenko.github.io/postgresql-backup-restore/helm/ --merge index.yaml
-```
+1. In `helm/Chart.yaml`, set `version`, `appVersion` and the image in `artifacthub.io/images` to `X.Y.Z`,
+   and describe the release in `artifacthub.io/changes`. `scripts/check-version.sh` checks they match.
+2. Package the chart and add it to the chart repository index:
 
-Pre-release chart versions (e.g. `1.0.0-rc.1`) are only installed with `--devel` or an explicit `--version`.
+   ```sh
+   helm package ./helm -d helm/packages
+   # index only the new package, so existing entries keep their dates
+   tmp=$(mktemp -d) && mkdir "$tmp/packages" && cp helm/packages/postgresql-backup-restore-X.Y.Z.tgz "$tmp/packages/"
+   helm repo index "$tmp" --url https://abohatyrenko.github.io/postgresql-backup-restore/helm/ --merge helm/index.yaml
+   cp "$tmp/index.yaml" helm/index.yaml
+   ```
+
+3. Merge the PR. GitHub Pages publishes the chart from `main`.
+4. Push the tag `vX.Y.Z` on the merge commit. CI checks that the tag matches the chart version and that the
+   chart package exists, scans the image and publishes it to Docker Hub. Until then, the new chart version
+   points to an image that doesn't exist yet, so tag right after merging.
+
+Release candidates (`vX.Y.Z-rc.N`) are published without the `latest` and `X.Y` tags; pre-release chart
+versions are only installed with `--devel` or an explicit `--version`.
 
 ## Upgrading to 1.0.0 (image 0.x / chart 0.1.x)
 
