@@ -1,1 +1,24 @@
-Check CronJob {{ .Release.Name }} at {{ .Release.Namespace }} namespace.
+{{- $fullname := include "postgresql-backup-restore.fullname" . }}
+{{- if .Values.backup.enabled }}
+Backups of {{ .Values.env.BACKUP_DATABASE_NAME | default "<BACKUP_DATABASE_NAME>" }} run on schedule "{{ .Values.backup.schedule }}"{{ with .Values.backup.timeZone }} ({{ . }}){{ end }}.
+
+Run a backup now:
+  kubectl -n {{ .Release.Namespace }} create job --from=cronjob/{{ $fullname }} {{ $fullname }}-manual-$(date +%s)
+
+List backups:
+  kubectl -n {{ .Release.Namespace }} logs job/<job-name>
+  kubectl -n {{ .Release.Namespace }} run pgbr-list --rm -it --restart=Never --image={{ include "postgresql-backup-restore.image" . }} --overrides='{"spec":{"serviceAccountName":"{{ include "postgresql-backup-restore.serviceAccountName" . }}"}}' -- list <database>
+{{- end }}
+{{- if .Values.restore.enabled }}
+
+Restore is enabled (never runs on its own). Start it with:
+  kubectl -n {{ .Release.Namespace }} create job --from=cronjob/{{ $fullname }}-restore {{ $fullname }}-restore-$(date +%s)
+{{- if not (or .Values.restore.env.RESTORE_CONFIRM .Values.env.RESTORE_CONFIRM) }}
+
+WARNING: RESTORE_CONFIRM is not set, restore jobs will refuse to run.
+{{- end }}
+{{- end }}
+{{- if and (not .Values.existingSecret) (not .Values.secrets.aws_access_key_id) (not .Values.serviceAccount.annotations) }}
+
+WARNING: no AWS credentials configured (secrets / existingSecret / IRSA service account annotation).
+{{- end }}
