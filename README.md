@@ -188,3 +188,7 @@ Pre-release chart versions (e.g. `1.0.0-rc.1`) are only installed with `--devel`
 - The image entrypoint is the script itself: pass `backup` / `restore` as arguments.
 - Chart values: `app.cronSchedule` → `backup.schedule`, `jobAnnotations` → `podAnnotations`,
   `command`/`args` → `backup.args` / `restore.args`, `notificationSlack` → `secrets.slack_webhook_url` + `deployNotification.enabled`.
+
+## License
+
+[MIT](LICENSE)
