@@ -1,6 +1,7 @@
 # PostgreSQL backup/restore to S3
 
 [![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/postgresql-backup-restore)](https://artifacthub.io/packages/search?repo=postgresql-backup-restore)
+[![security-scan](https://github.com/abohatyrenko/postgresql-backup-restore/actions/workflows/security-scan.yml/badge.svg)](https://github.com/abohatyrenko/postgresql-backup-restore/actions/workflows/security-scan.yml)
 
 Logical backups (`pg_dump`, custom format) of a PostgreSQL database to any S3-compatible storage
 (AWS S3, DigitalOcean Spaces, MinIO, ...) and restore from them. Ships as a Docker image and a Helm chart
