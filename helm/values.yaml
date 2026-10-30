@@ -1,9 +1,8 @@
 # Default values for postgresql-backup-restore.
-# This is a YAML-formatted file.
-# Declare variables to be passed into your templates.
+# All script settings are environment variables, see the project README for the full list.
 
 image:
-  repository: aboahtyrenko/postgresql-backup-restore
+  repository: abohatyrenko/postgresql-backup-restore
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
@@ -15,69 +14,158 @@ fullnameOverride: ""
 serviceAccount:
   # Specifies whether a service account should be created
   create: true
-  # Annotations to add to the service account
+  # Annotations to add to the service account, e.g. for IRSA / workload identity:
+  #   eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/pg-backup
   annotations: {}
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
   name: ""
+  automountServiceAccountToken: false
 
-jobAnnotations: {}
+# Scheduled backup
+backup:
+  enabled: true
+  schedule: "0 11 * * *" # every day at 11:00
+  # IANA time zone for the schedule, e.g. "Europe/Kyiv" (Kubernetes >= 1.27). Empty = controller time zone (usually UTC)
+  timeZone: ""
+  suspend: false
+  concurrencyPolicy: Forbid
+  # Skip the run if it could not be started within this many seconds of the schedule
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  backoffLimit: 1
+  activeDeadlineSeconds: 21600 # 6 hours
+  ttlSecondsAfterFinished: 86400
+  args: ["backup"]
+  # Environment variables only for backup jobs
+  env: {}
+    # BACKUP_KEEP_DAYS: "30"
+    # AGE_RECIPIENTS: "age1..."
+    # HEARTBEAT_URL: "https://hc-ping.com/<uuid>"
 
-resources: {}
-  # We usually recommend not to specify default resources and to leave this as a conscious
-  # choice for the user. This also increases chances charts run on environments with little
-  # resources, such as Minikube. If you do want to specify resources, uncomment the following
-  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
-  # limits:
-  #   cpu: 100m
-  #   memory: 128Mi
-  # requests:
-  #   cpu: 100m
-  #   memory: 128Mi
+# On-demand restore. Rendered as a suspended CronJob that is never scheduled;
+# start a restore with:
+#   kubectl create job --from=cronjob/<release>-restore restore-$(date +%s)
+restore:
+  enabled: false
+  backoffLimit: 0
+  activeDeadlineSeconds: 21600
+  ttlSecondsAfterFinished: 86400
+  # Add a backup file name to restore a specific backup instead of the latest one
+  args: ["restore"]
+  # Environment variables only for restore jobs
+  env: {}
+    # RESTORE_CONFIRM must equal RESTORE_DATABASE_NAME, otherwise the restore is refused
+    # RESTORE_CONFIRM: ""
+    # RESTORE_SOURCE_NAME: ""
 
-nodeSelector: {}
+# Plain environment variables for all jobs
+env: {}
+  # S3_BUCKET_PATH: "s3://my-bucket/postgresql"
+  # S3_ENDPOINT: "https://fra1.digitaloceanspaces.com" # leave empty for AWS S3
+  # AWS_REGION: "eu-central-1"
 
-command: [ "/bin/bash", "-c", "--" ]
+  # BACKUP_DATABASE_NAME: ""
+  # POSTGRESQL_BACKUP_HOST: ""
+  # POSTGRESQL_BACKUP_USER: ""
+  # POSTGRESQL_BACKUP_PORT: "5432"
 
-args: ["/bin/echo 'choose script' && ls -lah /opt/ &&  /bin/sleep 15"]
+  # RESTORE_DATABASE_NAME: ""
+  # POSTGRESQL_RESTORE_HOST: ""
+  # POSTGRESQL_RESTORE_USER: ""
+  # POSTGRESQL_RESTORE_PORT: "5432"
 
+  # PGSSLMODE: "verify-full"
+  # PGSSLROOTCERT: "/etc/pg-ca/ca-certificate.crt"
+
+# Additional environment variables in Kubernetes EnvVar format (e.g. valueFrom)
+extraEnv: []
+envFrom: []
+
+# Use an existing Secret instead of creating one. It may contain any of these keys:
+# aws_access_key_id, aws_secret_access_key, postgresql_backup, postgresql_restore,
+# age_identity, slack_webhook_url
 existingSecret: ""
 
+# Values for the Secret created by the chart (ignored when existingSecret is set).
+# Empty values are not rendered.
 secrets:
+  # Leave AWS keys empty to use IRSA / instance profile / workload identity
   aws_access_key_id: ""
   aws_secret_access_key: ""
   postgresql_backup: ""
   postgresql_restore: ""
+  # age secret key (AGE-SECRET-KEY-1...), needed to restore encrypted backups.
+  # Better keep it out of the backup cluster and only provide it when restoring.
+  age_identity: ""
+  slack_webhook_url: ""
 
-# alternative DB pass flow to protect from miss restore
+# Keep DB passwords in separate Secrets (takes precedence over the secret above).
+# Useful to make sure a restore can never run with production credentials.
 dbPasswordSecret:
   backup_secret:
     enabled: false
     name: ""
+    key: postgresql_backup
   restore_secret:
     enabled: false
     name: ""
+    key: postgresql_restore
 
-env: {}
-  # S3_BUCKET_PATH: ""
-  # S3_ENDPOINT: ""
-  # AWS_REGION: ""
+# Scratch space for dump files. The whole dump is written here before upload,
+# so sizeLimit must be larger than the (compressed) dump.
+workDir:
+  sizeLimit: 10Gi
+  # Replace the default emptyDir, e.g. with an ephemeral or persistent volume
+  volume: {}
+    # ephemeral:
+    #   volumeClaimTemplate:
+    #     spec:
+    #       accessModes: ["ReadWriteOnce"]
+    #       resources:
+    #         requests:
+    #           storage: 100Gi
 
-  # BACKUP_DATABASE_NAME: ""
-  # RESTORE_DATABASE_NAME: ""
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
 
-  # POSTGRESQL_BACKUP_HOST: ""
-  # POSTGRESQL_BACKUP_USER: ""
-  # POSTGRESQL_BACKUP_PORT: ""
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
 
-  # POSTGRESQL_RESTORE_HOST: ""
-  # POSTGRESQL_RESTORE_USER: ""
-  # POSTGRESQL_RESTORE_PORT: ""
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
 
-notificationSlack:
-  url: ""
-  channel: ""
-  emoji: ""
+podAnnotations: {}
+podLabels: {}
+priorityClassName: ""
+nodeSelector: {}
+tolerations: []
+affinity: {}
 
-app:
-  cronSchedule: "0 11 * * *" # Every day at 11:00 UTC
+# e.g. mount the DigitalOcean CA certificate for PGSSLMODE=verify-full
+extraVolumes: []
+  # - name: pg-ca
+  #   secret:
+  #     secretName: pg-ca
+extraVolumeMounts: []
+  # - name: pg-ca
+  #   mountPath: /etc/pg-ca
+  #   readOnly: true
+
+# Slack message on helm install/upgrade/rollback (uses secrets.slack_webhook_url).
+# Backup/restore failures are reported by the jobs themselves when the webhook is set.
+deployNotification:
+  enabled: false
