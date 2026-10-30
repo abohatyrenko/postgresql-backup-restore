@@ -27,9 +27,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Checks over TCP: on first start the image runs a temporary socket-only server for
+# initialization and restarts it, so a socket check can succeed too early.
 wait_pg() {
   for _ in $(seq 60); do
-    docker exec "$1" pg_isready -U postgres -q && return 0
+    docker exec "$1" pg_isready -h 127.0.0.1 -U postgres -q && return 0
     sleep 1
   done
   fail "postgres $1 did not become ready"
