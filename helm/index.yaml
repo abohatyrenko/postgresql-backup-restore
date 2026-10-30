@@ -1,6 +1,52 @@
 apiVersion: v1
 entries:
   postgresql-backup-restore:
+  - annotations:
+      artifacthub.io/category: database
+      artifacthub.io/changes: |
+        - kind: added
+          description: Artifact Hub metadata (license, links, keywords, maintainers, images for security scanning)
+        - kind: fixed
+          description: Links in the chart README work on Artifact Hub
+      artifacthub.io/displayName: PostgreSQL Backup & Restore
+      artifacthub.io/images: |
+        - name: postgresql-backup-restore
+          image: abohatyrenko/postgresql-backup-restore:1.0.0
+      artifacthub.io/license: MIT
+      artifacthub.io/links: |
+        - name: Source
+          url: https://github.com/abohatyrenko/postgresql-backup-restore
+        - name: Documentation
+          url: https://github.com/abohatyrenko/postgresql-backup-restore#readme
+        - name: Docker image
+          url: https://hub.docker.com/r/abohatyrenko/postgresql-backup-restore
+    apiVersion: v2
+    appVersion: 1.0.0
+    created: "2026-10-31T00:13:02.280937+03:00"
+    description: Scheduled PostgreSQL backups (pg_dump) to S3-compatible storage with
+      encryption, retention and restore
+    digest: 7ce058fb3612c3fdf9480a4c65fdd5c90d42bd203fa03bc7055f48e7425c805c
+    home: https://github.com/abohatyrenko/postgresql-backup-restore
+    icon: https://www.postgresql.org/media/img/about/press/elephant.png
+    keywords:
+    - postgresql
+    - postgres
+    - backup
+    - restore
+    - pg_dump
+    - s3
+    - cronjob
+    kubeVersion: '>=1.21.0-0'
+    maintainers:
+    - name: Anatolii Bohatyrenko
+      url: https://github.com/abohatyrenko
+    name: postgresql-backup-restore
+    sources:
+    - https://github.com/abohatyrenko/postgresql-backup-restore
+    type: application
+    urls:
+    - https://abohatyrenko.github.io/postgresql-backup-restore/helm/packages/postgresql-backup-restore-1.0.1.tgz
+    version: 1.0.1
   - apiVersion: v2
     appVersion: 1.0.0
     created: "2026-10-30T23:24:30.185162+03:00"
@@ -45,4 +91,4 @@ entries:
     urls:
     - https://abohatyrenko.github.io/postgresql-backup-restore/helm/packages/postgresql-backup-restore-0.1.0.tgz
     version: 0.1.0
-generated: "2026-10-30T23:24:30.184653+03:00"
+generated: "2026-10-31T00:13:02.280162+03:00"

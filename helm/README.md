@@ -1,6 +1,6 @@
 # postgresql-backup-restore Helm chart
 
-Runs [postgresql-backup-restore](../README.md) as a Kubernetes CronJob, plus an optional on-demand restore job.
+Runs [postgresql-backup-restore](https://github.com/abohatyrenko/postgresql-backup-restore#readme) as a Kubernetes CronJob, plus an optional on-demand restore job.
 
 ## Install
 
@@ -91,7 +91,7 @@ To restore a specific backup, set `restore.args: ["restore", "app-20261030T02000
 
 ## Values
 
-See [values.yaml](values.yaml) for all options. The most important ones:
+See [values.yaml](https://github.com/abohatyrenko/postgresql-backup-restore/blob/main/helm/values.yaml) for all options. The most important ones:
 
 | Key | Default | Description |
 |---|---|---|
