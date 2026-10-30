@@ -12,6 +12,9 @@ RUN apk add --no-cache \
       ca-certificates \
       coreutils \
       curl \
+ # gosu is only used by the postgres server entrypoint, which this image doesn't run,
+ # and is built with an old Go toolchain that vulnerability scanners flag
+ && rm -f /usr/local/bin/gosu \
  && addgroup -S -g 10001 backup \
  && adduser -S -D -H -u 10001 -G backup -h /tmp backup
 

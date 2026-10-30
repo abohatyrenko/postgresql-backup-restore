@@ -19,6 +19,8 @@ concurrency:
 
 env:
   IMAGE: abohatyrenko/postgresql-backup-restore
+  # Pinned by digest: trivy-action and Trivy image tags were hijacked in a 2026 supply chain attack
+  TRIVY_IMAGE: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
 
 jobs:
   lint:
@@ -79,6 +81,21 @@ jobs:
       - uses: docker/setup-qemu-action@v4
 
       - uses: docker/setup-buildx-action@v4
+
+      - name: Build image for scanning
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: postgresql-backup-restore:scan
+          cache-from: type=gha
+
+      # Fails on CRITICAL/HIGH vulnerabilities that have a fix, before anything is published
+      - name: Scan image for vulnerabilities
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY_IMAGE" \
+            image --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 \
+            postgresql-backup-restore:scan
 
       - name: Login to Docker Hub
         if: startsWith(github.ref, 'refs/tags/v')
