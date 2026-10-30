@@ -147,6 +147,7 @@ Older PostgreSQL client versions: `docker build --build-arg PG_VERSION=16 .`
 ### Release
 
 1. Push a `vX.Y.Z` tag: CI runs the tests and publishes the multi-arch image to Docker Hub.
+   Release candidates (`vX.Y.Z-rc.N`) are published without the `latest` and `X.Y` tags.
 2. Bump `version` / `appVersion` in `helm/Chart.yaml`, then publish the chart:
 
 ```sh
@@ -155,6 +156,8 @@ helm package ../
 cd ../
 helm repo index . --url https://abohatyrenko.github.io/postgresql-backup-restore/helm/ --merge index.yaml
 ```
+
+Pre-release chart versions (e.g. `1.0.0-rc.1`) are only installed with `--devel` or an explicit `--version`.
 
 ## Upgrading to 1.0.0 (image 0.x / chart 0.1.x)
 
