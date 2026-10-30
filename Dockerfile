@@ -1,22 +1,29 @@
-FROM debian:11-slim
+# pg_dump/pg_restore must be >= the server major version.
+# A newer client can dump/restore older servers, so the latest major is a safe default.
+ARG PG_VERSION=17
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    ca-certificates \
-    postgresql-client \
-    curl \
-    unzip \
-    wget
+FROM postgres:${PG_VERSION}-alpine
 
-# pinned latest cli version (10.03.23)
-RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-2.11.1.zip" -o "awscliv2.zip" && \
-    unzip awscliv2.zip && \
-    ./aws/install \
-&& rm -f awscliv2.zip \
-&& rm -rf /var/lib/apt/lists/*
+# hadolint ignore=DL3018
+RUN apk add --no-cache \
+      age \
+      aws-cli \
+      bash \
+      ca-certificates \
+      coreutils \
+      curl \
+ && addgroup -S -g 10001 backup \
+ && adduser -S -D -H -u 10001 -G backup -h /tmp backup
 
-COPY ./pg_backup_restore.sh /opt/pg_backup_restore.sh
+COPY --chmod=0755 pg_backup_restore.sh /usr/local/bin/pg_backup_restore.sh
+# Backward compatible path used by older chart versions / docs
+RUN ln -s /usr/local/bin/pg_backup_restore.sh /opt/pg_backup_restore.sh
 
-RUN chmod +x  /opt/pg_backup_restore.sh
+ENV HOME=/tmp \
+    WORK_DIR=/tmp/pg-backup-restore
 
-CMD [ "/opt/backup_restore.sh" ]
+USER 10001:10001
+WORKDIR /tmp
+
+ENTRYPOINT ["/usr/local/bin/pg_backup_restore.sh"]
+CMD ["backup"]

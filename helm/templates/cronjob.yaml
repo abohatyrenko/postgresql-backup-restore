@@ -1,98 +1,24 @@
----
+{{- include "postgresql-backup-restore.validateValues" . }}
+{{- if .Values.backup.enabled }}
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: "{{ .Release.Name }}"
+  name: {{ include "postgresql-backup-restore.fullname" . }}
   labels:
     {{- include "postgresql-backup-restore.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
 spec:
-  schedule: "{{ .Values.app.cronSchedule }}"
-  successfulJobsHistoryLimit: 1
-  failedJobsHistoryLimit: 1
-  concurrencyPolicy: "Forbid"
-  suspend: false
+  schedule: {{ .Values.backup.schedule | quote }}
+  {{- with .Values.backup.timeZone }}
+  timeZone: {{ . | quote }}
+  {{- end }}
+  suspend: {{ .Values.backup.suspend }}
+  concurrencyPolicy: {{ .Values.backup.concurrencyPolicy }}
+  {{- with .Values.backup.startingDeadlineSeconds }}
+  startingDeadlineSeconds: {{ . }}
+  {{- end }}
+  successfulJobsHistoryLimit: {{ .Values.backup.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.backup.failedJobsHistoryLimit }}
   jobTemplate:
-    spec:
-      backoffLimit: 1
-      ttlSecondsAfterFinished: 43200 # 12 hour
-      template:
-        metadata:
-          annotations:
-            checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
-            {{- if .Values.jobAnnotations }}
-              {{ toYaml .Values.jobAnnotations | nindent 12 }}
-            {{- end }}
-        spec:
-          {{- with .Values.imagePullSecrets }}
-          imagePullSecrets:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          serviceAccountName: {{ include "postgresql-backup-restore.serviceAccountName" . }}
-          restartPolicy: Never
-          containers:
-          - name: {{ .Chart.Name }}
-            image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-            imagePullPolicy: {{ .Values.image.pullPolicy }}
-            env:
-              - name: AWS_ACCESS_KEY_ID
-                valueFrom:
-                  secretKeyRef:
-                    {{- if .Values.existingSecret }}
-                    name: {{ .Values.existingSecret }}
-                    {{- else }}
-                    name: {{ include "postgresql-backup-restore.fullname" . }}
-                    {{- end }}
-                    key: aws_access_key_id
-              - name: AWS_SECRET_ACCESS_KEY
-                valueFrom:
-                  secretKeyRef:
-                    {{- if .Values.existingSecret }}
-                    name: {{ .Values.existingSecret }}
-                    {{- else }}
-                    name: {{ include "postgresql-backup-restore.fullname" . }}
-                    {{- end }}
-                    key: aws_secret_access_key
-              - name: PG_PASS_BACKUP
-                valueFrom:
-                  secretKeyRef:
-                    {{- if .Values.existingSecret }}
-                    name: {{ .Values.existingSecret }}
-                    {{- else if .Values.dbPasswordSecret.backup_secret.name }}
-                    name: {{ .Values.dbPasswordSecret.backup_secret.name }}
-                    {{- else }}
-                    name: {{ include "postgresql-backup-restore.fullname" . }}
-                    {{- end }}
-                    key: postgresql_backup
-                    optional: true
-              - name: PG_PASS_RESTORE
-                valueFrom:
-                  secretKeyRef:
-                    {{- if .Values.existingSecret }}
-                    name: {{ .Values.existingSecret }}
-                    {{- else if .Values.dbPasswordSecret.restore_secret.name }}
-                    name: {{ .Values.dbPasswordSecret.restore_secret.name }}
-                    {{- else }}
-                    name: {{ include "postgresql-backup-restore.fullname" . }}
-                    {{- end }}
-                    key: postgresql_restore
-                    optional: true
-            {{- if .Values.env }}
-            {{- range $key, $value := .Values.env }}
-              - name: {{ $key }}
-                value: {{ $value | quote }}
-            {{- end }}
-            {{- end }}
-            resources:
-              {{- toYaml .Values.resources | nindent 14 }}
-            {{- with .Values.command }}
-            command:
-              {{- toYaml . | nindent 12 }}
-            {{- end }}
-            {{- with .Values.args }}
-            args:
-              {{- toYaml . | nindent 12 }}
-            {{- end }}
-          {{- with .Values.nodeSelector }}
-          nodeSelector:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+    {{- include "postgresql-backup-restore.jobTemplate" (dict "root" . "job" .Values.backup "component" "backup") | trim | nindent 4 }}
+{{- end }}
