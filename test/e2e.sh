@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # End-to-end test: builds the image and runs backup/restore against real
-# PostgreSQL servers and an S3-compatible endpoint (SeaweedFS) in Docker.
+# PostgreSQL servers (plain and TLS) and an S3-compatible endpoint (SeaweedFS) in Docker.
 #
 # Usage: test/e2e.sh [image-tag]
 
@@ -21,7 +21,8 @@ log() { printf '\n==> %s\n' "$*"; }
 fail() { printf '\nFAIL: %s\n' "$*" >&2; exit 1; }
 
 cleanup() {
-  docker rm -f "$ID-src" "$ID-dst" "$ID-s3" >/dev/null 2>&1 || true
+  docker rm -f "$ID-src" "$ID-dst" "$ID-tls" "$ID-s3" >/dev/null 2>&1 || true
+  docker volume rm "$ID-certs" "$ID-aws" >/dev/null 2>&1 || true
   docker network rm "$NET" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -47,14 +48,37 @@ fi
 AGE_KEY="$(docker run --rm --entrypoint age-keygen "$IMAGE" 2>/dev/null)"
 AGE_PUB="$(grep -o 'age1[0-9a-z]*' <<<"$AGE_KEY")"
 
+log "generating TLS certificates (test CA, server certificate for $ID-tls, unrelated CA)"
+docker volume create "$ID-certs" >/dev/null
+docker run --rm -v "$ID-certs:/certs" alpine:3 sh -euc "
+  apk add --no-cache -q openssl >/dev/null
+  cd /certs
+  for ca in ca other-ca; do
+    openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj \"/CN=\$ca\" -keyout \$ca.key -out \$ca.crt 2>/dev/null
+  done
+  openssl req -newkey rsa:2048 -nodes -subj '/CN=$ID-tls' -keyout server.key -out server.csr 2>/dev/null
+  echo 'subjectAltName=DNS:$ID-tls' >san.ext
+  openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 1 -extfile san.ext -out server.crt 2>/dev/null
+  chown 70:70 server.key server.crt
+  chmod 600 server.key
+  chmod 644 ca.crt other-ca.crt"
+
 log "starting postgres ${SOURCE_PG_VERSION} (source), postgres ${TARGET_PG_VERSION} (target) and an S3 server (SeaweedFS)"
 docker network create "$NET" >/dev/null
 docker run -d --name "$ID-src" --network "$NET" -e POSTGRES_PASSWORD="$PASS" "postgres:${SOURCE_PG_VERSION}-alpine" >/dev/null
 docker run -d --name "$ID-dst" --network "$NET" -e POSTGRES_PASSWORD="$PASS" "postgres:${TARGET_PG_VERSION}-alpine" >/dev/null
 docker run -d --name "$ID-s3" --network "$NET" \
   -e AWS_ACCESS_KEY_ID=test-key -e AWS_SECRET_ACCESS_KEY=test-secret "$S3_IMAGE" server -s3 -dir=/data >/dev/null
+# TLS-only server, also reachable under an alias that is not in its certificate
+docker run -d --name "$ID-tls" --network "$NET" --network-alias "$ID-tls-alias" \
+  -v "$ID-certs:/certs:ro" -e POSTGRES_PASSWORD="$PASS" "postgres:${TARGET_PG_VERSION}-alpine" \
+  -c ssl=on -c ssl_cert_file=/certs/server.crt -c ssl_key_file=/certs/server.key >/dev/null
 wait_pg "$ID-src"
 wait_pg "$ID-dst"
+wait_pg "$ID-tls"
+# Reject non-TLS connections over the network
+docker exec "$ID-tls" sh -c 'sed -i "s/^host /hostssl /" "$PGDATA/pg_hba.conf"'
+psql_in "$ID-tls" postgres "SELECT pg_reload_conf()" >/dev/null
 
 psql_in "$ID-src" postgres "CREATE DATABASE app"
 psql_in "$ID-dst" postgres "CREATE DATABASE app_staging"
@@ -67,9 +91,11 @@ psql_in "$ID-src" app "
 # Pre-existing data in the target that must be replaced by the restore
 psql_in "$ID-dst" app_staging "CREATE TABLE public.users (id int, name text); INSERT INTO public.users VALUES (-1, 'stale');"
 
-COMMON_ENV=(
+AWS_ENV=(
   -e AWS_ACCESS_KEY_ID=test-key
   -e AWS_SECRET_ACCESS_KEY=test-secret
+)
+COMMON_ENV=(
   -e S3_ENDPOINT="http://$ID-s3:8333"
   -e AWS_ENDPOINT_URL_S3="http://$ID-s3:8333" # for direct aws calls in this test
   -e S3_BUCKET_PATH=s3://backups/postgresql
@@ -83,7 +109,7 @@ COMMON_ENV=(
   -e POSTGRESQL_RESTORE_USER=postgres
   -e PG_PASS_RESTORE="$PASS"
 )
-run() { docker run --rm --network "$NET" --read-only --tmpfs /tmp "${COMMON_ENV[@]}" "$@"; }
+run() { docker run --rm --network "$NET" --read-only --tmpfs /tmp "${COMMON_ENV[@]}" "${AWS_ENV[@]}" "$@"; }
 
 bucket_created=""
 for _ in $(seq 60); do
@@ -151,5 +177,56 @@ if run -e RESTORE_CONFIRM=app_staging "$IMAGE" restore; then
 fi
 marker="$(psql_in "$ID-dst" app_staging 'SELECT count(*) FROM public.users WHERE id = 5000')"
 [[ "$marker" == 1 ]] || fail "failed restore was not rolled back"
+
+log "default PGSSLMODE (require) must refuse a server without TLS"
+if run -e PGSSLMODE= "$IMAGE" backup; then
+  fail "backup connected to a server without TLS using the default PGSSLMODE"
+fi
+
+psql_in "$ID-tls" postgres "CREATE DATABASE tls_app" >/dev/null
+psql_in "$ID-tls" postgres "CREATE DATABASE tls_restore" >/dev/null
+psql_in "$ID-tls" tls_app "CREATE TABLE t (id int); INSERT INTO t SELECT generate_series(1, 77)" >/dev/null
+TLS_ENV=(
+  -v "$ID-certs:/certs:ro"
+  -e PGSSLMODE=verify-full
+  -e PGSSLROOTCERT=/certs/ca.crt
+  -e BACKUP_DATABASE_NAME=tls_app
+  -e POSTGRESQL_BACKUP_HOST="$ID-tls"
+  -e RESTORE_DATABASE_NAME=tls_restore
+  -e RESTORE_CONFIRM=tls_restore
+  -e POSTGRESQL_RESTORE_HOST="$ID-tls"
+)
+
+log "backup + restore over TLS with certificate verification (verify-full)"
+run "${TLS_ENV[@]}" "$IMAGE" backup
+run "${TLS_ENV[@]}" "$IMAGE" restore
+rows="$(psql_in "$ID-tls" tls_restore 'SELECT count(*) FROM t')"
+[[ "$rows" == 77 ]] || fail "expected 77 rows restored over TLS, got $rows"
+
+log "verify-full must reject a certificate signed by an unknown CA"
+if run "${TLS_ENV[@]}" -e PGSSLROOTCERT=/certs/other-ca.crt "$IMAGE" backup; then
+  fail "verify-full accepted a certificate from an unknown CA"
+fi
+
+log "verify-full must reject a host name that is not in the certificate"
+if run "${TLS_ENV[@]}" -e POSTGRESQL_BACKUP_HOST="$ID-tls-alias" "$IMAGE" backup; then
+  fail "verify-full accepted a host name mismatch"
+fi
+
+log "AWS credentials from a shared credentials file, no AWS_* keys in the environment"
+docker volume create "$ID-aws" >/dev/null
+docker run --rm -v "$ID-aws:/aws" alpine:3 sh -c \
+  'printf "[default]\naws_access_key_id = test-key\naws_secret_access_key = test-secret\n" >/aws/credentials && chmod 644 /aws/credentials'
+AWS_ENV=(-v "$ID-aws:/aws:ro" -e AWS_SHARED_CREDENTIALS_FILE=/aws/credentials)
+before="$(run "$IMAGE" list | wc -l)"
+run "$IMAGE" backup
+after="$(run "$IMAGE" list | wc -l)"
+((after == before + 1)) || fail "backup with file-based credentials did not upload ($before -> $after backups)"
+
+log "backup without any AWS credentials must fail"
+AWS_ENV=()
+if run "$IMAGE" backup; then
+  fail "backup succeeded without AWS credentials"
+fi
 
 log "ALL TESTS PASSED"
