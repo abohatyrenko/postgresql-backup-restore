@@ -148,6 +148,9 @@ server ([SeaweedFS](https://github.com/seaweedfs/seaweedfs)) in Docker, in both 
 
 The Helm chart is linted and validated with kubeconform, and was tested manually in a kind cluster.
 
+The image is scanned with [Trivy](https://trivy.dev) before it is published: CI fails on critical or high
+vulnerabilities that have a fix. The published `latest` image is rescanned every week.
+
 Not tested yet (should work, feedback welcome): DigitalOcean Spaces and other hosted S3-compatible storage,
 managed PostgreSQL services, IRSA / EKS Pod Identity (credentials come from the standard AWS CLI credential chain).
 
