@@ -99,6 +99,17 @@ jobs:
           tags: postgresql-backup-restore:scan
           cache-from: type=gha
 
+      # TEMPORARY: diagnose which libexpat the runner gets, remove before merge
+      - name: Debug libexpat source
+        run: |
+          echo "--- built image"
+          docker run --rm --entrypoint sh postgresql-backup-restore:scan -c 'cat /etc/apk/repositories; apk info -v 2>/dev/null | grep expat'
+          echo "--- fresh base image"
+          docker run --rm postgres:17-alpine sh -c 'apk update; apk policy libexpat'
+          echo "--- CDN headers for APKINDEX"
+          curl -sSI https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/APKINDEX.tar.gz \
+            | grep -iE '^(HTTP|age|last-modified|date|x-served-by|x-cache|via|etag)'
+
       # Before anything is published
       - name: Scan image for vulnerabilities
         uses: ./.github/actions/trivy-scan
