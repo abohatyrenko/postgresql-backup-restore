@@ -91,28 +91,15 @@ jobs:
 
       - uses: docker/setup-buildx-action@v4
 
+      # No layer cache: a cached "apk add" layer is only invalidated by a Dockerfile or base image
+      # change, so package security fixes would never get into the image
       - name: Build image for scanning
         uses: docker/build-push-action@v7
         with:
           context: .
           load: true
           tags: postgresql-backup-restore:scan
-          cache-from: type=gha
-
-      # TEMPORARY: diagnose which libexpat the runner gets, remove before merge
-      - name: Debug libexpat source
-        run: |
-          set +e
-          echo "--- built image: arch, apk db entry, files"
-          docker run --rm --entrypoint sh postgresql-backup-restore:scan -c \
-            'uname -m; grep -A1 "^P:libexpat" /lib/apk/db/installed; apk info -v 2>&1 | grep -i expat; ls -l /usr/lib/libexpat*'
-          echo "--- base image digest"
-          docker image inspect postgres:17-alpine --format '{{index .RepoDigests 0}}' 2>&1
-          echo "--- fresh base image"
-          docker run --rm postgres:17-alpine sh -c 'apk update 2>&1; apk policy libexpat 2>&1'
-          echo "--- CDN headers for APKINDEX"
-          curl -sSI https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/APKINDEX.tar.gz \
-            | grep -iE '^(HTTP|age|last-modified|date|x-served-by|x-cache|via|etag)'
+          pull: true
 
       # Before anything is published
       - name: Scan image for vulnerabilities
@@ -135,5 +122,4 @@ jobs:
           push: ${{ startsWith(github.ref, 'refs/tags/v') }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          pull: true
