@@ -3,10 +3,10 @@ name: postgresql-backup-restore
 description: Scheduled PostgreSQL backups (pg_dump) to S3-compatible storage with encryption, retention and restore
 type: application
 
-# Chart version, bump on every chart change
-version: 1.0.2
-# Version of the postgresql-backup-restore image
-appVersion: "1.0.1"
+# The chart and the image share one version: version, appVersion and the image in
+# artifacthub.io/images below must be equal (checked by scripts/check-version.sh).
+version: 1.0.3
+appVersion: "1.0.3"
 
 kubeVersion: ">=1.21.0-0"
 home: https://github.com/abohatyrenko/postgresql-backup-restore
@@ -38,8 +38,9 @@ annotations:
       url: https://hub.docker.com/r/abohatyrenko/postgresql-backup-restore
   artifacthub.io/images: |
     - name: postgresql-backup-restore
-      image: abohatyrenko/postgresql-backup-restore:1.0.1
-  artifacthub.io/containsSecurityUpdates: "true"
+      image: abohatyrenko/postgresql-backup-restore:1.0.3
   artifacthub.io/changes: |
-    - kind: security
-      description: Image 1.0.1 removes the unused gosu binary from the postgres base image (1 critical, 25 high Go stdlib CVEs)
+    - kind: fixed
+      description: Chart and image versions are equal again (chart 1.0.2 pointed to image 1.0.1)
+    - kind: changed
+      description: Readability and maintenance cleanups in the script, chart templates and CI, no behaviour changes
