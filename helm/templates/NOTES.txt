@@ -5,9 +5,11 @@ Backups of {{ .Values.env.BACKUP_DATABASE_NAME | default "<BACKUP_DATABASE_NAME>
 Run a backup now:
   kubectl -n {{ .Release.Namespace }} create job --from=cronjob/{{ $fullname }} {{ $fullname }}-manual-$(date +%s)
 
-List backups:
-  kubectl -n {{ .Release.Namespace }} logs job/<job-name>
-  kubectl -n {{ .Release.Namespace }} run pgbr-list --rm -it --restart=Never --image={{ include "postgresql-backup-restore.image" . }} --overrides='{"spec":{"serviceAccountName":"{{ include "postgresql-backup-restore.serviceAccountName" . }}"}}' -- list <database>
+List backups (a one-off job from the CronJob with the "list" command, needs jq):
+  job={{ $fullname }}-list-$(date +%s)
+  kubectl -n {{ .Release.Namespace }} create job --from=cronjob/{{ $fullname }} "$job" --dry-run=client -o json \
+    | jq '.spec.template.spec.containers[0].args = ["list"]' | kubectl -n {{ .Release.Namespace }} create -f -
+  kubectl -n {{ .Release.Namespace }} wait --for=condition=complete "job/$job" --timeout=300s && kubectl -n {{ .Release.Namespace }} logs "job/$job"
 {{- end }}
 {{- if .Values.restore.enabled }}
 

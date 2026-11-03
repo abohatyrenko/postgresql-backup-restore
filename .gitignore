@@ -1,39 +1,14 @@
-# Always-ignore extensions
-*.diff
-*.err
-*.orig
-*.log
-*.out
-*.rej
-*.swo
-*.swp
-*.vi
-*~
-
-# OS or Editor folders
+# OS and editors
 .DS_Store
 Thumbs.db
-.cache
-.project
-.settings
-.tmproj
-*.esproj
-nbproject
-.idea
-.vscode
+.idea/
+.vscode/
+.history/
+*.swp
+*~
 
-# Internal project files and folders
-/bin
-/tools
-protoc.zip
-
-# Config files
-configs/config.api.yml
-configs/config.cms.yml
-configs/dbconfig.yml
-
-swagger-gen
-protoc
-
-.terraform
-terraform.tfstate
+# Generated locally and in CI
+rendered.yaml
+# Chart packages belong to helm/packages only (see the release steps in README.md)
+*.tgz
+!helm/packages/*.tgz

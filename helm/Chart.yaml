@@ -5,8 +5,8 @@ type: application
 
 # The chart and the image share one version: version, appVersion and the image in
 # artifacthub.io/images below must be equal (checked by scripts/check-version.sh).
-version: 1.0.3
-appVersion: "1.0.3"
+version: 1.0.4
+appVersion: "1.0.4"
 
 kubeVersion: ">=1.21.0-0"
 home: https://github.com/abohatyrenko/postgresql-backup-restore
@@ -38,9 +38,7 @@ annotations:
       url: https://hub.docker.com/r/abohatyrenko/postgresql-backup-restore
   artifacthub.io/images: |
     - name: postgresql-backup-restore
-      image: abohatyrenko/postgresql-backup-restore:1.0.3
+      image: abohatyrenko/postgresql-backup-restore:1.0.4
   artifacthub.io/changes: |
     - kind: fixed
-      description: Chart and image versions are equal again (chart 1.0.2 pointed to image 1.0.1)
-    - kind: changed
-      description: Readability and maintenance cleanups in the script, chart templates and CI, no behaviour changes
+      description: NOTES command to list backups failed without S3_BUCKET_PATH and credentials; it now runs a one-off job from the CronJob, which has the same env and Secret
