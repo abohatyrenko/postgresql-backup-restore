@@ -86,7 +86,8 @@ Name of the Secret holding credentials, empty if there is none
 {{- end }}
 
 {{/*
-Fail early on values from chart versions < 1.0.0
+Fail early on values from chart versions < 1.0.0. Called from validate.yaml.
+Remove in 2.0.0.
 */}}
 {{- define "postgresql-backup-restore.validateValues" -}}
 {{- if and .Values.app .Values.app.cronSchedule }}
@@ -124,6 +125,8 @@ Usage: include "postgresql-backup-restore.env" (dict "root" $ "env" .Values.back
 {{- if not $dbSecret.enabled }}
 {{- $_ := set $secretEnv $dbEnv $dbKey }}
 {{- end }}
+{{- /* With existingSecret, reference every key (optional: true skips missing ones);
+       with the chart's own Secret, only the keys that have a value */}}
 {{- range $name, $key := $secretEnv }}
 {{- if or $root.Values.existingSecret (and $secretName (get $root.Values.secrets $key)) }}
 - name: {{ $name }}

@@ -19,7 +19,7 @@ RUN apk add --no-cache \
  && adduser -S -D -H -u 10001 -G backup -h /tmp backup
 
 COPY --chmod=0755 pg_backup_restore.sh /usr/local/bin/pg_backup_restore.sh
-# Backward compatible path used by older chart versions / docs
+# Script path of image 0.x, still referenced by chart 0.1.x values. Remove in 2.0.0
 RUN ln -s /usr/local/bin/pg_backup_restore.sh /opt/pg_backup_restore.sh
 
 ENV HOME=/tmp \

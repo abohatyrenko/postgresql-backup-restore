@@ -8,6 +8,7 @@
 #   pg_backup_restore.sh list
 #
 # All configuration is done through environment variables, see README.md.
+# *_EXTRA_OPTS values are split on whitespace, so a single option value can't contain spaces.
 
 set -Eeuo pipefail
 umask 077
@@ -140,7 +141,10 @@ make_tmp_dir() {
   TMP_DIR="$(mktemp -d "${WORK_DIR}/run.XXXXXX")"
 }
 
-# Prints backup file names under s3 "directory" $1, oldest first.
+# Prints backup file names under s3 "directory" $1, oldest first (by upload time, not by name).
+# `aws s3 ls` prints "<date> <time> <size> <name>"; the name may contain spaces, so awk cuts
+# the first three fields off instead of printing $4. Sub-"directories" (PRE lines) are skipped.
+# *.tar.gz are backups from image 0.x: custom-format dumps despite the extension, so pg_restore reads them.
 list_backups() {
   aws s3 ls "${1}/" \
     | awk '$1 != "PRE" { line=$0; sub(/^[^ ]+ +[^ ]+ +[^ ]+ +/, "", line); print $1 " " $2 " " line }' \
@@ -151,6 +155,11 @@ list_backups() {
 
 remote_size() {
   aws s3 ls "$1" | awk '{ print $3; exit }'
+}
+
+validate_dump() {
+  info "validating dump archive"
+  pg_restore --list "$1" >/dev/null || die "dump archive is not readable by pg_restore"
 }
 
 # ---------------------------------------------------------------------------
@@ -184,8 +193,7 @@ do_backup() {
     --file="$local_file" \
     "${dump_opts[@]}"
 
-  info "validating dump archive"
-  pg_restore --list "$local_file" >/dev/null || die "dump archive is not readable by pg_restore"
+  validate_dump "$local_file"
 
   upload_file="$local_file"
   if [[ -n "$AGE_RECIPIENTS" ]]; then
@@ -270,8 +278,7 @@ do_restore() {
     local_file="${local_file%.age}"
   fi
 
-  info "validating dump archive"
-  pg_restore --list "$local_file" >/dev/null || die "dump archive is not readable by pg_restore"
+  validate_dump "$local_file"
 
   local -a restore_opts=() psql_opts=()
   is_true "$RESTORE_CLEAN" && restore_opts+=(--clean --if-exists)
@@ -285,6 +292,8 @@ do_restore() {
   # pg_restore renders SQL and psql applies it, instead of pg_restore connecting
   # directly: a newer pg_restore emits settings older servers reject
   # (e.g. "SET transaction_timeout" from v17), which are dropped from the preamble here.
+  # The preamble is a few dozen lines; only the first 100 are filtered so a table row
+  # that happens to look like this setting is never touched.
   info "restoring into ${RESTORE_DATABASE_NAME} on ${POSTGRESQL_RESTORE_HOST}:${POSTGRESQL_RESTORE_PORT} (sslmode=${PGSSLMODE})"
   pg_restore --file=- "${restore_opts[@]}" "${extra_opts[@]}" "$local_file" \
     | awk 'NR <= 100 && /^SET transaction_timeout = /{ next } { print }' \
@@ -305,7 +314,7 @@ do_restore() {
 
 do_list() {
   require_env S3_BUCKET_PATH
-  local name="${2:-${BACKUP_DATABASE_NAME:-$RESTORE_SOURCE_NAME}}"
+  local name="${1:-${BACKUP_DATABASE_NAME:-$RESTORE_SOURCE_NAME}}"
   [[ -n "$name" ]] || die "pass a database name or set BACKUP_DATABASE_NAME"
   list_backups "${S3_BUCKET_PATH}/${name}"
 }
@@ -322,7 +331,7 @@ EOF
 case "$COMMAND" in
   backup) do_backup ;;
   restore) do_restore "${2:-}" ;;
-  list) do_list "$@" ;;
+  list) do_list "${2:-}" ;;
   -h | --help | help) usage ;;
   *) usage; exit 64 ;;
 esac

@@ -4,6 +4,12 @@
 # PostgreSQL servers (plain and TLS) and an S3-compatible endpoint (SeaweedFS) in Docker.
 #
 # Usage: test/e2e.sh [image-tag]
+#
+# Environment:
+#   SOURCE_PG_VERSION  postgres version to back up from (default 14)
+#   TARGET_PG_VERSION  postgres version to restore into, also used for the TLS server (default 17)
+#   SKIP_BUILD         set to reuse an already built image
+#   S3_IMAGE           S3-compatible server image (default chrislusf/seaweedfs:latest)
 
 set -Eeuo pipefail
 
@@ -111,7 +117,9 @@ COMMON_ENV=(
   -e POSTGRESQL_RESTORE_USER=postgres
   -e PG_PASS_RESTORE="$PASS"
 )
-run() { docker run --rm --network "$NET" --read-only --tmpfs /tmp "${COMMON_ENV[@]}" "${AWS_ENV[@]}" "$@"; }
+# run_no_aws_keys: without AWS_ENV, for the credential chain tests at the end
+run_no_aws_keys() { docker run --rm --network "$NET" --read-only --tmpfs /tmp "${COMMON_ENV[@]}" "$@"; }
+run() { run_no_aws_keys "${AWS_ENV[@]}" "$@"; }
 
 bucket_created=""
 for _ in $(seq 60); do
@@ -158,6 +166,12 @@ log "unencrypted backup + restore of a specific file"
 run -e PG_DUMP_EXTRA_OPTS="--compress=9" "$IMAGE" backup
 file="$(run "$IMAGE" list | grep -E '\.dump$' | tail -n 1)"
 run -e RESTORE_CONFIRM=app_staging "$IMAGE" restore "$file"
+
+log "restore of a backup made by image 0.x (custom-format dump named *.tar.gz)"
+run --entrypoint aws "$IMAGE" s3 cp --only-show-errors \
+  "s3://backups/postgresql/app/$file" s3://backups/postgresql/app/app-2022-08-01.tar.gz
+run "$IMAGE" list | grep -qx 'app-2022-08-01.tar.gz' || fail "0.x backup is not listed"
+run -e RESTORE_CONFIRM=app_staging "$IMAGE" restore app-2022-08-01.tar.gz
 
 log "restore into an older server (pg_restore ${TARGET_PG_VERSION} -> postgres ${SOURCE_PG_VERSION})"
 psql_in "$ID-src" postgres "CREATE DATABASE app_old"
@@ -219,15 +233,14 @@ log "AWS credentials from a shared credentials file, no AWS_* keys in the enviro
 docker volume create "$ID-aws" >/dev/null
 docker run --rm -v "$ID-aws:/aws" alpine:3 sh -c \
   'printf "[default]\naws_access_key_id = test-key\naws_secret_access_key = test-secret\n" >/aws/credentials && chmod 644 /aws/credentials'
-AWS_ENV=(-v "$ID-aws:/aws:ro" -e AWS_SHARED_CREDENTIALS_FILE=/aws/credentials)
-before="$(run "$IMAGE" list | wc -l)"
-run "$IMAGE" backup
-after="$(run "$IMAGE" list | wc -l)"
+AWS_FILE_ENV=(-v "$ID-aws:/aws:ro" -e AWS_SHARED_CREDENTIALS_FILE=/aws/credentials)
+before="$(run_no_aws_keys "${AWS_FILE_ENV[@]}" "$IMAGE" list | wc -l)"
+run_no_aws_keys "${AWS_FILE_ENV[@]}" "$IMAGE" backup
+after="$(run_no_aws_keys "${AWS_FILE_ENV[@]}" "$IMAGE" list | wc -l)"
 ((after == before + 1)) || fail "backup with file-based credentials did not upload ($before -> $after backups)"
 
 log "backup without any AWS credentials must fail"
-AWS_ENV=()
-if run "$IMAGE" backup; then
+if run_no_aws_keys "$IMAGE" backup; then
   fail "backup succeeded without AWS credentials"
 fi
 
