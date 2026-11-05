@@ -5,8 +5,8 @@ type: application
 
 # The chart and the image share one version: version, appVersion and the image in
 # artifacthub.io/images below must be equal (checked by scripts/check-version.sh).
-version: 1.0.4
-appVersion: "1.0.4"
+version: 2.0.0
+appVersion: "2.0.0"
 
 kubeVersion: ">=1.21.0-0"
 home: https://github.com/abohatyrenko/postgresql-backup-restore
@@ -38,7 +38,15 @@ annotations:
       url: https://hub.docker.com/r/abohatyrenko/postgresql-backup-restore
   artifacthub.io/images: |
     - name: postgresql-backup-restore
-      image: abohatyrenko/postgresql-backup-restore:1.0.4
+      image: abohatyrenko/postgresql-backup-restore:2.0.0
   artifacthub.io/changes: |
+    - kind: changed
+      description: Image is 158 MB instead of 514 MB; built on alpine with only the PostgreSQL client tools, S3 is accessed with rclone instead of the AWS CLI
+    - kind: changed
+      description: "Breaking: S3_UPLOAD_EXTRA_OPTS takes rclone flags instead of aws s3 cp options; see Upgrading to 2.0.0 in the README"
+    - kind: added
+      description: S3_PROVIDER for the rclone S3 provider of S3-compatible storage
     - kind: fixed
-      description: NOTES command to list backups failed without S3_BUCKET_PATH and credentials; it now runs a one-off job from the CronJob, which has the same env and Secret
+      description: restore and list fail when the bucket can't be listed instead of reporting no backups
+    - kind: removed
+      description: Script path /opt/pg_backup_restore.sh of image 0.x

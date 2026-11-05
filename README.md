@@ -10,7 +10,7 @@ that runs backups as a Kubernetes CronJob.
 Features:
 
 - PostgreSQL 17 client tools: backs up servers from 9.2 to 17, restores into older servers too (as long as the dump uses no newer features)
-- every dump is validated with `pg_restore --list`, and the uploaded object size is verified
+- every dump is validated with `pg_restore --list`, rclone verifies size and checksum of the upload
 - optional client-side encryption with [age](https://age-encryption.org)
 - retention (`BACKUP_KEEP_DAYS`)
 - atomic restore (single transaction): a failed restore leaves the target database untouched
@@ -41,7 +41,7 @@ Commands:
 | `restore [file]` | Restore the latest backup (or the given file name) of `RESTORE_SOURCE_NAME` into `RESTORE_DATABASE_NAME` |
 | `list [db]` | List backups, oldest first |
 
-The script also runs outside Docker; it needs `bash`, `pg_dump`/`pg_restore`/`psql`, `aws` CLI v2, `curl` and, for encryption, `age`.
+The script also runs outside Docker; it needs `bash`, `pg_dump`/`pg_restore`/`psql`, [rclone](https://rclone.org), `curl` and, for encryption, `age`.
 
 ### Configuration
 
@@ -51,9 +51,11 @@ The script also runs outside Docker; it needs `bash`, `pg_dump`/`pg_restore`/`ps
 |---|---|---|
 | `S3_BUCKET_PATH` | (required) | e.g. `s3://my-bucket/postgresql` |
 | `S3_ENDPOINT` | AWS | Endpoint of S3-compatible storage, e.g. `https://fra1.digitaloceanspaces.com` |
-| `AWS_REGION` | `eu-central-1` | |
-| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | | Optional, any [AWS CLI credential source](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-authentication.html) works |
-| `S3_UPLOAD_EXTRA_OPTS` | | Extra `aws s3 cp` options, e.g. `--sse AES256 --storage-class STANDARD_IA` |
+| `S3_PROVIDER` | `AWS`, or `Other` with `S3_ENDPOINT` | rclone [S3 provider](https://rclone.org/s3/#s3-provider), e.g. `DigitalOcean`, `Minio`, `Cloudflare` |
+| `AWS_REGION` | `eu-central-1` | Region of the bucket (on AWS it must match the bucket's region) |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | | Optional, any [AWS SDK credential source](https://docs.aws.amazon.com/sdkref/latest/guide/standardized-credentials.html) works: shared credentials file, IRSA, EKS Pod Identity, instance profile. With `S3_ENDPOINT` the EC2 instance profile is off (`AWS_EC2_METADATA_DISABLED=true`) unless set otherwise |
+| `S3_UPLOAD_EXTRA_OPTS` | | Extra [rclone flags](https://rclone.org/s3/) for the upload, e.g. `--s3-server-side-encryption AES256 --s3-storage-class STANDARD_IA` |
+| `RCLONE_<FLAG>` | | Any [rclone flag](https://rclone.org/flags/) for all S3 calls, e.g. `RCLONE_BWLIMIT=10M`, `RCLONE_RETRIES=5` |
 
 **Backup**
 
@@ -145,7 +147,8 @@ server ([SeaweedFS](https://github.com/seaweedfs/seaweedfs)) in Docker, in both 
 - restore into an older server, rollback of a restore that fails midway
 - restore guard, missing decryption key and bad credentials fail the job
 - TLS: `verify-full` with a CA certificate; an unknown CA, a host name mismatch and a server without TLS are rejected
-- AWS credentials from a shared credentials file instead of environment variables; no credentials fail the job
+- AWS credentials from a shared credentials file instead of environment variables; no credentials or a bucket that can't be listed fail the job
+- rclone flags in `S3_UPLOAD_EXTRA_OPTS` (multipart upload); aws-cli options from image 1.x are rejected before the dump
 
 The Helm chart is linted and validated with kubeconform, and was tested manually in a kind cluster.
 
@@ -153,7 +156,7 @@ The image is scanned with [Trivy](https://trivy.dev) before it is published: CI 
 vulnerabilities that have a fix. The published `latest` image is rescanned every week.
 
 Not tested yet (should work, feedback welcome): DigitalOcean Spaces and other hosted S3-compatible storage,
-managed PostgreSQL services, IRSA / EKS Pod Identity (credentials come from the standard AWS CLI credential chain).
+managed PostgreSQL services, IRSA / EKS Pod Identity (credentials come from the standard AWS SDK credential chain).
 
 ## Development
 
@@ -162,7 +165,8 @@ docker build -t postgresql-backup-restore .
 test/e2e.sh   # see "What is tested" above
 ```
 
-Older PostgreSQL client versions: `docker build --build-arg PG_VERSION=16 .`
+Older PostgreSQL client versions: `docker build --build-arg PG_VERSION=16 .` (any major that has an official
+`postgres:<major>-alpine` image; only its client tools are copied into the image).
 
 ### Release
 
@@ -187,6 +191,22 @@ The chart and the image share one version: `X.Y.Z` means chart `X.Y.Z` with imag
 
 Release candidates (`vX.Y.Z-rc.N`) are published without the `latest` and `X.Y` tags; pre-release chart
 versions are only installed with `--devel` or an explicit `--version`.
+
+## Upgrading to 2.0.0
+
+- The image is 158 MB instead of 514 MB: it is built on Alpine with only the PostgreSQL client tools, and S3 is
+  accessed with [rclone](https://rclone.org) instead of the AWS CLI.
+- `S3_BUCKET_PATH`, `S3_ENDPOINT`, `AWS_REGION` and AWS credentials (keys, shared credentials file, IRSA, EKS Pod
+  Identity, instance profile) work as before. Existing backups are listed and restored as before.
+- `S3_UPLOAD_EXTRA_OPTS` takes rclone flags instead of `aws s3 cp` options, e.g. `--sse AES256` →
+  `--s3-server-side-encryption AES256`, `--storage-class STANDARD_IA` → `--s3-storage-class STANDARD_IA`.
+  A backup with the old options fails before the dump and names the option.
+- On AWS, set `AWS_REGION` to the bucket's region if it is not `eu-central-1`.
+- With `S3_ENDPOINT`, credentials from the EC2 instance metadata are not used unless `AWS_EC2_METADATA_DISABLED=false`.
+- Set the endpoint with `S3_ENDPOINT` (not `AWS_ENDPOINT_URL*`) and other S3 settings with rclone flags. The checksum
+  settings image 1.x made for S3-compatible storage (`AWS_REQUEST_CHECKSUM_CALCULATION`, ...) are not needed anymore.
+- The script is only at `/usr/local/bin/pg_backup_restore.sh`; `/opt/pg_backup_restore.sh` (image 0.x path) is gone.
+- A listing error (e.g. no access to the bucket) fails `restore` and `list` instead of reporting no backups.
 
 ## Upgrading to 1.0.0 (image 0.x / chart 0.1.x)
 

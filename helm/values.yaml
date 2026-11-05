@@ -103,8 +103,7 @@ secrets:
 
 # Keep DB passwords in separate Secrets (takes precedence over the secret above).
 # Useful to make sure a restore can never run with production credentials.
-# backup_secret/restore_secret are snake_case unlike other values, kept for compatibility
-# (to be renamed to backupSecret/restoreSecret in 2.0.0).
+# backup_secret/restore_secret are snake_case unlike other values, kept for compatibility.
 dbPasswordSecret:
   backup_secret:
     enabled: false

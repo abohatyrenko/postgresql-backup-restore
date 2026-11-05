@@ -23,6 +23,7 @@ readonly SCRIPT_NAME="${0##*/}"
 S3_BUCKET_PATH="${S3_BUCKET_PATH:-}"
 S3_BUCKET_PATH="${S3_BUCKET_PATH%/}"
 S3_ENDPOINT="${S3_ENDPOINT:-}"
+S3_PROVIDER="${S3_PROVIDER:-}"
 S3_UPLOAD_EXTRA_OPTS="${S3_UPLOAD_EXTRA_OPTS:-}"
 export AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-eu-central-1}}"
 
@@ -67,12 +68,24 @@ WORK_DIR="${WORK_DIR:-/tmp/pg-backup-restore}"
 export PGSSLMODE="${PGSSLMODE:-require}"
 export PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-30}"
 
-# Recent AWS CLI versions send CRC checksums by default, which many S3-compatible
-# providers (DigitalOcean Spaces, older MinIO, ...) reject.
+# S3 is accessed with rclone. s3://bucket/path stands for an rclone S3 remote that takes
+# credentials from the AWS credential chain (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, shared
+# credentials file, IRSA / EKS Pod Identity, instance profile) and S3_ENDPOINT / AWS_REGION.
+# No rclone config file is needed; without one rclone prints a notice on every call.
+export RCLONE_CONFIG="${RCLONE_CONFIG:-/dev/null}"
+export RCLONE_CONFIG_S3URL_TYPE=s3
+export RCLONE_CONFIG_S3URL_ENV_AUTH=true
+export RCLONE_CONFIG_S3URL_REGION="$AWS_REGION"
+# Backup credentials usually may not create buckets
+export RCLONE_CONFIG_S3URL_NO_CHECK_BUCKET=true
 if [[ -n "$S3_ENDPOINT" ]]; then
-  export AWS_ENDPOINT_URL_S3="$S3_ENDPOINT"
-  export AWS_REQUEST_CHECKSUM_CALCULATION="${AWS_REQUEST_CHECKSUM_CALCULATION:-when_required}"
-  export AWS_RESPONSE_CHECKSUM_VALIDATION="${AWS_RESPONSE_CHECKSUM_VALIDATION:-when_required}"
+  export RCLONE_CONFIG_S3URL_PROVIDER="${S3_PROVIDER:-Other}"
+  export RCLONE_CONFIG_S3URL_ENDPOINT="$S3_ENDPOINT"
+  # Outside AWS there is no instance profile. Without credentials the AWS SDK would retry
+  # the EC2 metadata endpoint for minutes before failing.
+  export AWS_EC2_METADATA_DISABLED="${AWS_EC2_METADATA_DISABLED:-true}"
+else
+  export RCLONE_CONFIG_S3URL_PROVIDER="${S3_PROVIDER:-AWS}"
 fi
 
 COMMAND="${1:-}"
@@ -141,20 +154,41 @@ make_tmp_dir() {
   TMP_DIR="$(mktemp -d "${WORK_DIR}/run.XXXXXX")"
 }
 
-# Prints backup file names under s3 "directory" $1, oldest first (by upload time, not by name).
-# `aws s3 ls` prints "<date> <time> <size> <name>"; the name may contain spaces, so awk cuts
-# the first three fields off instead of printing $4. Sub-"directories" (PRE lines) are skipped.
-# *.tar.gz are backups from image 0.x: custom-format dumps despite the extension, so pg_restore reads them.
-list_backups() {
-  aws s3 ls "${1}/" \
-    | awk '$1 != "PRE" { line=$0; sub(/^[^ ]+ +[^ ]+ +[^ ]+ +/, "", line); print $1 " " $2 " " line }' \
-    | sort -k1,1 -k2,2 \
-    | cut -d' ' -f3- \
-    | grep -E '\.(dump|dump\.age|tar\.gz)$' || true
+# rclone with s3://bucket/path arguments translated to the "s3url" remote, so that
+# logs and messages can use the paths as the user wrote them
+rcl() {
+  local arg args=()
+  for arg in "$@"; do
+    [[ "$arg" == s3://* ]] && arg="s3url:${arg#s3://}"
+    args+=("$arg")
+  done
+  rclone "${args[@]}"
 }
 
-remote_size() {
-  aws s3 ls "$1" | awk '{ print $3; exit }'
+# Prints backup file names under s3 "directory" $1, oldest first (by upload time, not by name).
+# A directory that does not exist yet has no backups; any other listing error is fatal,
+# so that a restore never reports "no backups" because the bucket was not readable.
+# *.tar.gz are backups from image 0.x: custom-format dumps despite the extension, so pg_restore reads them.
+list_backups() {
+  local listing status=0
+  listing="$(rcl lsf --files-only --use-server-modtime --format tp --separator $'\t' "${1}/")" || status=$?
+  # rclone exit code 3: directory not found
+  ((status == 0 || status == 3)) || die "cannot list ${1}/ (rclone exit code ${status})"
+  sort -t $'\t' -k1,1 <<<"$listing" | cut -f2- | grep -E '\.(dump|dump\.age|tar\.gz)$' || true
+}
+
+# S3_UPLOAD_EXTRA_OPTS took `aws s3 cp` options before 2.0.0. Checked before the dump,
+# which may take hours, instead of failing at the upload.
+check_upload_opts() {
+  local opt opts=()
+  read -r -a opts <<<"$S3_UPLOAD_EXTRA_OPTS"
+  for opt in "${opts[@]}"; do
+    case "${opt%%=*}" in
+      --sse | --sse-c | --sse-c-key | --sse-kms-key-id | --storage-class | --acl | --grants | --content-type | --cache-control | --expires)
+        die "S3_UPLOAD_EXTRA_OPTS has the aws-cli option ${opt%%=*}; since image 2.0.0 it takes rclone flags, e.g. --s3-server-side-encryption AES256 --s3-storage-class STANDARD_IA (https://rclone.org/s3/)"
+        ;;
+    esac
+  done
 }
 
 validate_dump() {
@@ -169,8 +203,9 @@ validate_dump() {
 do_backup() {
   require_env S3_BUCKET_PATH BACKUP_DATABASE_NAME POSTGRESQL_BACKUP_HOST POSTGRESQL_BACKUP_USER
   [[ "$BACKUP_KEEP_DAYS" =~ ^[0-9]+$ ]] || die "BACKUP_KEEP_DAYS must be a non-negative integer"
+  check_upload_opts
 
-  local timestamp file_name s3_dir local_file upload_file s3_target local_size uploaded_size
+  local timestamp file_name s3_dir local_file upload_file s3_target
   timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
   file_name="${BACKUP_DATABASE_NAME}-${timestamp}.dump"
   s3_dir="${S3_BUCKET_PATH}/${BACKUP_DATABASE_NAME}"
@@ -211,13 +246,8 @@ do_backup() {
   local -a upload_opts=()
   read -r -a upload_opts <<<"$S3_UPLOAD_EXTRA_OPTS"
   info "uploading $(du -h "$upload_file" | cut -f1) to ${s3_target}"
-  aws s3 cp --no-progress --only-show-errors "${upload_opts[@]}" "$upload_file" "$s3_target"
-
-  local_size="$(stat -c %s "$upload_file")"
-  uploaded_size="$(remote_size "$s3_target")"
-  [[ "$uploaded_size" == "$local_size" ]] \
-    || die "uploaded object size (${uploaded_size:-missing}) does not match local file size (${local_size})"
-  info "upload verified (${local_size} bytes)"
+  # rclone compares size and checksum of the uploaded object with the local file
+  rcl copyto "${upload_opts[@]}" "$upload_file" "$s3_target"
 
   SUMMARY="${SUMMARY} -> ${s3_target}"
   [[ "$BACKUP_KEEP_DAYS" -gt 0 ]] && prune_backups "$s3_dir"
@@ -228,9 +258,11 @@ do_backup() {
 # Deletes backups older than BACKUP_KEEP_DAYS. Only files following the
 # <db>-<YYYYmmddTHHMMSSZ>.dump[.age] naming are considered; the newest backup is always kept.
 prune_backups() {
-  local s3_dir="$1" cutoff name ts newest
+  local s3_dir="$1" cutoff listing name ts newest
   cutoff="$(date -u -d "-${BACKUP_KEEP_DAYS} days" +%Y%m%dT%H%M%SZ)"
-  newest="$(list_backups "$s3_dir" | tail -n 1)"
+  # Not read in a process substitution, where a listing error would not stop the script
+  listing="$(list_backups "$s3_dir")"
+  newest="$(tail -n 1 <<<"$listing")"
   info "removing backups older than ${BACKUP_KEEP_DAYS} day(s) (before ${cutoff})"
 
   local pattern="^${BACKUP_DATABASE_NAME//./\\.}-([0-9]{8}T[0-9]{6}Z)\\.dump(\\.age)?$"
@@ -239,9 +271,9 @@ prune_backups() {
     ts="${BASH_REMATCH[1]}"
     if [[ "$ts" < "$cutoff" && "$name" != "$newest" ]]; then
       info "deleting expired backup ${name}"
-      aws s3 rm --only-show-errors "${s3_dir}/${name}"
+      rcl deletefile "${s3_dir}/${name}"
     fi
-  done < <(list_backups "$s3_dir")
+  done <<<"$listing"
 }
 
 do_restore() {
@@ -249,11 +281,12 @@ do_restore() {
   [[ "$RESTORE_CONFIRM" == "$RESTORE_DATABASE_NAME" ]] \
     || die "restore overwrites ${RESTORE_DATABASE_NAME}@${POSTGRESQL_RESTORE_HOST}; set RESTORE_CONFIRM=${RESTORE_DATABASE_NAME} to proceed"
 
-  local s3_dir="${S3_BUCKET_PATH}/${RESTORE_SOURCE_NAME}" file_name="${1:-}" local_file
+  local s3_dir="${S3_BUCKET_PATH}/${RESTORE_SOURCE_NAME}" file_name="${1:-}" local_file listing
   SUMMARY="of ${RESTORE_DATABASE_NAME}@${POSTGRESQL_RESTORE_HOST}"
 
   if [[ -z "$file_name" ]]; then
-    file_name="$(list_backups "$s3_dir" | tail -n 1)"
+    listing="$(list_backups "$s3_dir")"
+    file_name="$(tail -n 1 <<<"$listing")"
     [[ -n "$file_name" ]] || die "no backups found in ${s3_dir}/"
     info "no backup file given, using latest: ${file_name}"
   fi
@@ -263,7 +296,7 @@ do_restore() {
   local_file="${TMP_DIR}/${file_name}"
 
   info "downloading ${s3_dir}/${file_name}"
-  aws s3 cp --no-progress --only-show-errors "${s3_dir}/${file_name}" "$local_file"
+  rcl copyto "${s3_dir}/${file_name}" "$local_file"
 
   if [[ "$local_file" == *.age ]]; then
     local identity_file="$AGE_IDENTITY_FILE"

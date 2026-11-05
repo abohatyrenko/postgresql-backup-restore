@@ -105,7 +105,12 @@ AWS_ENV=(
 )
 COMMON_ENV=(
   -e S3_ENDPOINT="http://$ID-s3:8333"
-  -e AWS_ENDPOINT_URL_S3="http://$ID-s3:8333" # for direct aws calls in this test
+  # remote "e2e:" for direct rclone calls in this test
+  -e RCLONE_CONFIG=/dev/null
+  -e RCLONE_CONFIG_E2E_TYPE=s3
+  -e RCLONE_CONFIG_E2E_PROVIDER=Other
+  -e RCLONE_CONFIG_E2E_ENV_AUTH=true
+  -e RCLONE_CONFIG_E2E_ENDPOINT="http://$ID-s3:8333"
   -e S3_BUCKET_PATH=s3://backups/postgresql
   -e PGSSLMODE=disable
   -e BACKUP_DATABASE_NAME=app
@@ -123,14 +128,13 @@ run() { run_no_aws_keys "${AWS_ENV[@]}" "$@"; }
 
 bucket_created=""
 for _ in $(seq 60); do
-  run --entrypoint aws "$IMAGE" s3 mb s3://backups >/dev/null 2>&1 && bucket_created=1 && break
+  run --entrypoint rclone "$IMAGE" mkdir e2e:backups >/dev/null 2>&1 && bucket_created=1 && break
   sleep 1
 done
 [[ -n "$bucket_created" ]] || fail "could not create S3 bucket"
 
 log "seeding an expired backup for retention test"
-run --entrypoint sh "$IMAGE" -c \
-  'echo old | aws s3 cp - s3://backups/postgresql/app/app-20200101T000000Z.dump --only-show-errors'
+run --entrypoint sh "$IMAGE" -c 'echo old | rclone rcat e2e:backups/postgresql/app/app-20200101T000000Z.dump'
 
 log "backup (encrypted, retention 7 days)"
 run -e AGE_RECIPIENTS="$AGE_PUB" -e BACKUP_KEEP_DAYS=7 "$IMAGE" backup
@@ -168,10 +172,23 @@ file="$(run "$IMAGE" list | grep -E '\.dump$' | tail -n 1)"
 run -e RESTORE_CONFIRM=app_staging "$IMAGE" restore "$file"
 
 log "restore of a backup made by image 0.x (custom-format dump named *.tar.gz)"
-run --entrypoint aws "$IMAGE" s3 cp --only-show-errors \
-  "s3://backups/postgresql/app/$file" s3://backups/postgresql/app/app-2022-08-01.tar.gz
+run --entrypoint rclone "$IMAGE" copyto \
+  "e2e:backups/postgresql/app/$file" e2e:backups/postgresql/app/app-2022-08-01.tar.gz
 run "$IMAGE" list | grep -qx 'app-2022-08-01.tar.gz' || fail "0.x backup is not listed"
 run -e RESTORE_CONFIRM=app_staging "$IMAGE" restore app-2022-08-01.tar.gz
+
+log "S3_UPLOAD_EXTRA_OPTS with rclone flags (multipart upload, checksum verified by rclone)"
+before="$(run "$IMAGE" list | wc -l)"
+run -e S3_UPLOAD_EXTRA_OPTS="--s3-upload-cutoff=0 --s3-chunk-size=5Mi" "$IMAGE" backup
+after="$(run "$IMAGE" list | wc -l)"
+((after == before + 1)) || fail "backup with S3_UPLOAD_EXTRA_OPTS did not upload ($before -> $after backups)"
+
+log "S3_UPLOAD_EXTRA_OPTS with aws-cli options (image 1.x) must fail before the dump"
+if out="$(run -e S3_UPLOAD_EXTRA_OPTS="--sse AES256" "$IMAGE" backup 2>&1)"; then
+  fail "backup accepted aws-cli options in S3_UPLOAD_EXTRA_OPTS"
+fi
+grep -q 'rclone flags' <<<"$out" || fail "no hint about rclone flags: $out"
+grep -q 'dumping' <<<"$out" && fail "the dump ran before S3_UPLOAD_EXTRA_OPTS was checked"
 
 log "restore into an older server (pg_restore ${TARGET_PG_VERSION} -> postgres ${SOURCE_PG_VERSION})"
 psql_in "$ID-src" postgres "CREATE DATABASE app_old"
@@ -238,6 +255,12 @@ before="$(run_no_aws_keys "${AWS_FILE_ENV[@]}" "$IMAGE" list | wc -l)"
 run_no_aws_keys "${AWS_FILE_ENV[@]}" "$IMAGE" backup
 after="$(run_no_aws_keys "${AWS_FILE_ENV[@]}" "$IMAGE" list | wc -l)"
 ((after == before + 1)) || fail "backup with file-based credentials did not upload ($before -> $after backups)"
+
+log "restore with a bucket that can't be listed must fail, not report missing backups"
+if out="$(run -e AWS_SECRET_ACCESS_KEY=wrong -e RESTORE_CONFIRM=app_staging "$IMAGE" restore 2>&1)"; then
+  fail "restore succeeded with wrong AWS credentials"
+fi
+grep -q 'cannot list' <<<"$out" || fail "listing error not reported: $out"
 
 log "backup without any AWS credentials must fail"
 if run_no_aws_keys "$IMAGE" backup; then
