@@ -28,10 +28,10 @@ entries:
           url: https://hub.docker.com/r/abohatyrenko/postgresql-backup-restore
     apiVersion: v2
     appVersion: 2.0.0
-    created: "2026-11-05T12:44:08.798582+03:00"
+    created: "2026-11-05T12:52:53.118529+03:00"
     description: Scheduled PostgreSQL backups (pg_dump) to S3-compatible storage with
       encryption, retention and restore
-    digest: 0b31cd9efdf1551f65db9183fa0f83676fba8c5563e7f845f60563f88f27b54a
+    digest: 7252c676202f5b6fd3f7e30ad754470c747c923ccd7871f0b042cb8957ef6a3e
     home: https://github.com/abohatyrenko/postgresql-backup-restore
     icon: https://www.postgresql.org/media/img/about/press/elephant.png
     keywords:
@@ -278,4 +278,4 @@ entries:
     urls:
     - https://abohatyrenko.github.io/postgresql-backup-restore/helm/packages/postgresql-backup-restore-0.1.0.tgz
     version: 0.1.0
-generated: "2026-11-05T12:44:08.797291+03:00"
+generated: "2026-11-05T12:52:53.117967+03:00"
