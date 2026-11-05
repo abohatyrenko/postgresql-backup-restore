@@ -16,24 +16,24 @@ COPY --from=postgres /usr/local/lib/libpq.so.5* /usr/local/lib/
 
 # The shared libraries the client tools link to are installed by soname, so the list
 # follows the PostgreSQL version instead of being kept by hand.
+# rclone comes from Alpine: its package is rebuilt when Go gets security fixes, which the
+# official rclone binaries are not between rclone releases (vulnerability scanners flag those).
 # hadolint ignore=DL3018,SC2046
 RUN apk add --no-cache \
       age \
-      aws-cli \
       bash \
       ca-certificates \
       coreutils \
       curl \
+      rclone \
       $(scanelf --needed --nobanner --format '%n#p' \
           /usr/local/bin/pg_dump /usr/local/bin/pg_restore /usr/local/bin/psql /usr/local/lib/libpq.so.5 \
         | tr ',' '\n' | sort -u | grep -v '^libpq\.so' | sed 's/^/so:/') \
- && pg_dump --version && pg_restore --version && psql --version \
+ && pg_dump --version && pg_restore --version && psql --version && rclone version \
  && addgroup -S -g 10001 backup \
  && adduser -S -D -H -u 10001 -G backup -h /tmp backup
 
 COPY --chmod=0755 pg_backup_restore.sh /usr/local/bin/pg_backup_restore.sh
-# Script path of image 0.x, still referenced by chart 0.1.x values. Remove in 2.0.0
-RUN ln -s /usr/local/bin/pg_backup_restore.sh /opt/pg_backup_restore.sh
 
 ENV HOME=/tmp \
     WORK_DIR=/tmp/pg-backup-restore
