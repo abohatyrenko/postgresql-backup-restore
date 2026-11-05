@@ -5,8 +5,8 @@ type: application
 
 # The chart and the image share one version: version, appVersion and the image in
 # artifacthub.io/images below must be equal (checked by scripts/check-version.sh).
-version: 1.0.4
-appVersion: "1.0.4"
+version: 1.0.5
+appVersion: "1.0.5"
 
 kubeVersion: ">=1.21.0-0"
 home: https://github.com/abohatyrenko/postgresql-backup-restore
@@ -38,7 +38,7 @@ annotations:
       url: https://hub.docker.com/r/abohatyrenko/postgresql-backup-restore
   artifacthub.io/images: |
     - name: postgresql-backup-restore
-      image: abohatyrenko/postgresql-backup-restore:1.0.4
+      image: abohatyrenko/postgresql-backup-restore:1.0.5
   artifacthub.io/changes: |
-    - kind: fixed
-      description: NOTES command to list backups failed without S3_BUCKET_PATH and credentials; it now runs a one-off job from the CronJob, which has the same env and Secret
+    - kind: changed
+      description: Image is 237 MB instead of 514 MB; it is built on alpine with only pg_dump, pg_restore and psql copied from the official postgres image, without the server and its LLVM JIT

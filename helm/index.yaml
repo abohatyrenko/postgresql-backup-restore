@@ -4,6 +4,50 @@ entries:
   - annotations:
       artifacthub.io/category: database
       artifacthub.io/changes: |
+        - kind: changed
+          description: Image is 237 MB instead of 514 MB; it is built on alpine with only pg_dump, pg_restore and psql copied from the official postgres image, without the server and its LLVM JIT
+      artifacthub.io/displayName: PostgreSQL Backup & Restore
+      artifacthub.io/images: |
+        - name: postgresql-backup-restore
+          image: abohatyrenko/postgresql-backup-restore:1.0.5
+      artifacthub.io/license: MIT
+      artifacthub.io/links: |
+        - name: Source
+          url: https://github.com/abohatyrenko/postgresql-backup-restore
+        - name: Documentation
+          url: https://github.com/abohatyrenko/postgresql-backup-restore#readme
+        - name: Docker image
+          url: https://hub.docker.com/r/abohatyrenko/postgresql-backup-restore
+    apiVersion: v2
+    appVersion: 1.0.5
+    created: "2026-11-05T12:22:11.812366+03:00"
+    description: Scheduled PostgreSQL backups (pg_dump) to S3-compatible storage with
+      encryption, retention and restore
+    digest: 51c4b026ff429dbe643364750457b0ff125041fd1d97c57493242a3bc0607a84
+    home: https://github.com/abohatyrenko/postgresql-backup-restore
+    icon: https://www.postgresql.org/media/img/about/press/elephant.png
+    keywords:
+    - postgresql
+    - postgres
+    - backup
+    - restore
+    - pg_dump
+    - s3
+    - cronjob
+    kubeVersion: '>=1.21.0-0'
+    maintainers:
+    - name: Anatolii Bohatyrenko
+      url: https://github.com/abohatyrenko
+    name: postgresql-backup-restore
+    sources:
+    - https://github.com/abohatyrenko/postgresql-backup-restore
+    type: application
+    urls:
+    - https://abohatyrenko.github.io/postgresql-backup-restore/helm/packages/postgresql-backup-restore-1.0.5.tgz
+    version: 1.0.5
+  - annotations:
+      artifacthub.io/category: database
+      artifacthub.io/changes: |
         - kind: fixed
           description: NOTES command to list backups failed without S3_BUCKET_PATH and credentials; it now runs a one-off job from the CronJob, which has the same env and Secret
       artifacthub.io/displayName: PostgreSQL Backup & Restore
@@ -226,4 +270,4 @@ entries:
     urls:
     - https://abohatyrenko.github.io/postgresql-backup-restore/helm/packages/postgresql-backup-restore-0.1.0.tgz
     version: 0.1.0
-generated: "2026-11-03T22:53:49.094491+03:00"
+generated: "2026-11-05T12:22:11.811714+03:00"

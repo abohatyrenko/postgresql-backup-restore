@@ -162,7 +162,8 @@ docker build -t postgresql-backup-restore .
 test/e2e.sh   # see "What is tested" above
 ```
 
-Older PostgreSQL client versions: `docker build --build-arg PG_VERSION=16 .`
+Older PostgreSQL client versions: `docker build --build-arg PG_VERSION=16 .` (any major that has an official
+`postgres:<major>-alpine` image; only its client tools are copied into the image).
 
 ### Release
 
