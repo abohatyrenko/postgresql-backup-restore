@@ -141,7 +141,8 @@ See the [chart README](helm/README.md).
 ## What is tested
 
 Every CI run executes [`test/e2e.sh`](test/e2e.sh) against real PostgreSQL servers and an S3-compatible
-server ([SeaweedFS](https://github.com/seaweedfs/seaweedfs)) in Docker, in both version directions (13 → 18, 18 → 16):
+server ([SeaweedFS](https://github.com/seaweedfs/seaweedfs)) in Docker, twice: with a backup of PostgreSQL 15 (the oldest
+supported major) restored into 18 (the newest), and a backup of 18 restored into 17:
 
 - encrypted and plain backup/restore, retention, restore of the latest or a specific backup, repeated restores
 - restore into an older server, rollback of a restore that fails midway

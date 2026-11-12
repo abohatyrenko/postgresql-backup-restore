@@ -6,7 +6,7 @@
 # Usage: test/e2e.sh [image-tag]
 #
 # Environment:
-#   SOURCE_PG_VERSION  postgres version to back up from (default 14)
+#   SOURCE_PG_VERSION  postgres version to back up from (default 15)
 #   TARGET_PG_VERSION  postgres version to restore into, also used for the TLS server (default 18)
 #   SKIP_BUILD         set to reuse an already built image
 #   S3_IMAGE           S3-compatible server image (default chrislusf/seaweedfs:4.53)
@@ -16,7 +16,7 @@ set -Eeuo pipefail
 cd "$(dirname "$0")/.."
 
 IMAGE="${1:-postgresql-backup-restore:e2e}"
-SOURCE_PG_VERSION="${SOURCE_PG_VERSION:-14}"
+SOURCE_PG_VERSION="${SOURCE_PG_VERSION:-15}"
 TARGET_PG_VERSION="${TARGET_PG_VERSION:-18}"
 S3_IMAGE="${S3_IMAGE:-chrislusf/seaweedfs:4.53}"
 ID="pgbr-e2e-$$"
@@ -177,7 +177,8 @@ run -e S3_UPLOAD_EXTRA_OPTS="--s3-upload-cutoff=0 --s3-chunk-size=5Mi" "$IMAGE" 
 after="$(run "$IMAGE" list | wc -l)"
 ((after == before + 1)) || fail "backup with S3_UPLOAD_EXTRA_OPTS did not upload ($before -> $after backups)"
 
-log "restore into an older server (pg_restore ${TARGET_PG_VERSION} -> postgres ${SOURCE_PG_VERSION})"
+# In the "up" run the source server is the older one, so this is a restore into an older server
+log "restore into the source server (postgres ${SOURCE_PG_VERSION})"
 psql_in "$ID-src" postgres "CREATE DATABASE app_old"
 run -e RESTORE_CONFIRM=app_old -e RESTORE_DATABASE=app_old -e RESTORE_HOST="$ID-src" "$IMAGE" restore "$file"
 users="$(psql_in "$ID-src" app_old 'SELECT count(*) FROM public.users')"

@@ -75,11 +75,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Backup/restore against PostgreSQL 13 -> 18
-        run: SOURCE_PG_VERSION=13 TARGET_PG_VERSION=18 test/e2e.sh
+      # Source -> target server versions. Up: from the oldest supported major to the newest.
+      # Down: from the newest to the one before it, the usual way back after an upgrade.
+      - name: Backup/restore against PostgreSQL 15 -> 18
+        run: SOURCE_PG_VERSION=15 TARGET_PG_VERSION=18 test/e2e.sh
 
-      - name: Backup/restore against PostgreSQL 18 -> 16
-        run: SKIP_BUILD=1 SOURCE_PG_VERSION=18 TARGET_PG_VERSION=16 test/e2e.sh
+      - name: Backup/restore against PostgreSQL 18 -> 17
+        run: SKIP_BUILD=1 SOURCE_PG_VERSION=18 TARGET_PG_VERSION=17 test/e2e.sh
 
   docker:
     needs: [lint, e2e]
