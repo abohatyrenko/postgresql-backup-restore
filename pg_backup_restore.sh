@@ -173,27 +173,12 @@ rcl() {
 # Prints backup file names under s3 "directory" $1, oldest first (by upload time, not by name).
 # A directory that does not exist yet has no backups; any other listing error is fatal,
 # so that a restore never reports "no backups" because the bucket was not readable.
-# *.tar.gz are backups from image 0.x: custom-format dumps despite the extension, so pg_restore reads them.
 list_backups() {
   local listing status=0
   listing="$(rcl lsf --files-only --use-server-modtime --format tp --separator $'\t' "${1}/")" || status=$?
   # rclone exit code 3: directory not found
   ((status == 0 || status == 3)) || die "cannot list ${1}/ (rclone exit code ${status})"
-  sort -t $'\t' -k1,1 <<<"$listing" | cut -f2- | grep -E '\.(dump|dump\.age|tar\.gz)$' || true
-}
-
-# S3_UPLOAD_EXTRA_OPTS took `aws s3 cp` options before 2.0.0. Checked before the dump,
-# which may take hours, instead of failing at the upload.
-check_upload_opts() {
-  local opt opts=()
-  read -r -a opts <<<"$S3_UPLOAD_EXTRA_OPTS"
-  for opt in "${opts[@]}"; do
-    case "${opt%%=*}" in
-      --sse | --sse-c | --sse-c-key | --sse-kms-key-id | --storage-class | --acl | --grants | --content-type | --cache-control | --expires)
-        die "S3_UPLOAD_EXTRA_OPTS has the aws-cli option ${opt%%=*}; since image 2.0.0 it takes rclone flags, e.g. --s3-server-side-encryption AES256 --s3-storage-class STANDARD_IA (https://rclone.org/s3/)"
-        ;;
-    esac
-  done
+  sort -t $'\t' -k1,1 <<<"$listing" | cut -f2- | grep -E '\.dump(\.age)?$' || true
 }
 
 validate_dump() {
@@ -208,7 +193,6 @@ validate_dump() {
 do_backup() {
   require_env S3_BUCKET_PATH BACKUP_DATABASE BACKUP_HOST BACKUP_USER
   [[ "$BACKUP_KEEP_DAYS" =~ ^[0-9]+$ ]] || die "BACKUP_KEEP_DAYS must be a non-negative integer"
-  check_upload_opts
 
   local timestamp file_name s3_dir local_file upload_file s3_target
   timestamp="$(date -u +%Y%m%dT%H%M%SZ)"

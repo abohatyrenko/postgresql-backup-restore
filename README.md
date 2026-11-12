@@ -148,7 +148,7 @@ server ([SeaweedFS](https://github.com/seaweedfs/seaweedfs)) in Docker, in both 
 - restore guard, missing decryption key and bad credentials fail the job; a backup killed by `SIGTERM` (job deadline, eviction) is reported as failed
 - TLS: `verify-full` with a CA certificate; an unknown CA, a host name mismatch and a server without TLS are rejected
 - AWS credentials from a shared credentials file instead of environment variables; no credentials or a bucket that can't be listed fail the job
-- rclone flags in `S3_UPLOAD_EXTRA_OPTS` (multipart upload); aws-cli options from image 1.x are rejected before the dump
+- rclone flags in `S3_UPLOAD_EXTRA_OPTS` (multipart upload)
 
 The Helm chart is linted, its values are validated against `values.schema.json`, the rendered manifests are
 validated with kubeconform, and it was tested manually in a kind cluster.
@@ -182,45 +182,6 @@ The chart and the image share one version: `X.Y.Z` means chart `X.Y.Z` with imag
 
 Release candidates (`vX.Y.Z-rc.N`) are published without the `latest` and `X.Y` tags; pre-release chart
 versions are only installed with `--devel` or an explicit `--version`.
-
-## Upgrading to 3.0.0
-
-3.0.0 renames settings so that they follow one scheme. Nothing changes in the backups themselves: existing backups
-are listed and restored as before.
-
-**Environment variables**
-
-| Before | Now |
-|---|---|
-| `BACKUP_DATABASE_NAME` | `BACKUP_DATABASE` |
-| `POSTGRESQL_BACKUP_HOST` / `_PORT` / `_USER` | `BACKUP_HOST` / `BACKUP_PORT` / `BACKUP_USER` |
-| `PG_PASS_BACKUP` | `BACKUP_PASSWORD` |
-| `RESTORE_DATABASE_NAME` | `RESTORE_DATABASE` |
-| `RESTORE_SOURCE_NAME` | `RESTORE_SOURCE_DATABASE` |
-| `POSTGRESQL_RESTORE_HOST` / `_PORT` / `_USER` | `RESTORE_HOST` / `RESTORE_PORT` / `RESTORE_USER` |
-| `PG_PASS_RESTORE` | `RESTORE_PASSWORD` |
-
-`AWS_REGION` has no default anymore (it was `eu-central-1`): set it to the region of the bucket.
-
-**Chart**
-
-- The chart is installed from `oci://ghcr.io/abohatyrenko/charts/postgresql-backup-restore`; the Helm repository
-  at `abohatyrenko.github.io` is gone.
-- Keys of `secrets` and of an `existingSecret` are named after the variables they set:
-
-  | Before | Now |
-  |---|---|
-  | `aws_access_key_id` / `aws_secret_access_key` | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` |
-  | `postgresql_backup` / `postgresql_restore` | `BACKUP_PASSWORD` / `RESTORE_PASSWORD` |
-  | `age_identity` | `AGE_IDENTITY` |
-  | `slack_webhook_url` | `SLACK_WEBHOOK_URL` |
-
-- `dbPasswordSecret.backup_secret` / `restore_secret` became `backup.passwordSecret` / `restore.passwordSecret`
-  (`name`, `key`); there is no `enabled`, setting `name` is enough.
-- Values are validated: an unknown or misspelled value fails the install instead of being ignored.
-
-Upgrade notes of older versions are in the
-[README of 2.0.0](https://github.com/abohatyrenko/postgresql-backup-restore/blob/v2.0.0/README.md#upgrading-to-200).
 
 ## License
 

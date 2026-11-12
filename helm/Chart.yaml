@@ -41,7 +41,7 @@ annotations:
       image: abohatyrenko/postgresql-backup-restore:3.0.0
   artifacthub.io/changes: |
     - kind: changed
-      description: "Breaking: connection variables follow one scheme, e.g. BACKUP_HOST, BACKUP_PASSWORD, RESTORE_DATABASE; see Upgrading to 3.0.0 in the README"
+      description: "Breaking: connection variables follow one scheme, e.g. BACKUP_HOST, BACKUP_PASSWORD, RESTORE_DATABASE"
     - kind: changed
       description: "Breaking: Secret keys are named after the variables they set (BACKUP_PASSWORD, AWS_ACCESS_KEY_ID, ...); dbPasswordSecret became backup.passwordSecret / restore.passwordSecret"
     - kind: changed

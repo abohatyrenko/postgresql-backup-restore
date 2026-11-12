@@ -171,24 +171,11 @@ run -e PG_DUMP_EXTRA_OPTS="--compress=9" "$IMAGE" backup
 file="$(run "$IMAGE" list | grep -E '\.dump$' | tail -n 1)"
 run -e RESTORE_CONFIRM=app_staging "$IMAGE" restore "$file"
 
-log "restore of a backup made by image 0.x (custom-format dump named *.tar.gz)"
-run --entrypoint rclone "$IMAGE" copyto \
-  "e2e:backups/postgresql/app/$file" e2e:backups/postgresql/app/app-2022-08-01.tar.gz
-run "$IMAGE" list | grep -qx 'app-2022-08-01.tar.gz' || fail "0.x backup is not listed"
-run -e RESTORE_CONFIRM=app_staging "$IMAGE" restore app-2022-08-01.tar.gz
-
 log "S3_UPLOAD_EXTRA_OPTS with rclone flags (multipart upload, checksum verified by rclone)"
 before="$(run "$IMAGE" list | wc -l)"
 run -e S3_UPLOAD_EXTRA_OPTS="--s3-upload-cutoff=0 --s3-chunk-size=5Mi" "$IMAGE" backup
 after="$(run "$IMAGE" list | wc -l)"
 ((after == before + 1)) || fail "backup with S3_UPLOAD_EXTRA_OPTS did not upload ($before -> $after backups)"
-
-log "S3_UPLOAD_EXTRA_OPTS with aws-cli options (image 1.x) must fail before the dump"
-if out="$(run -e S3_UPLOAD_EXTRA_OPTS="--sse AES256" "$IMAGE" backup 2>&1)"; then
-  fail "backup accepted aws-cli options in S3_UPLOAD_EXTRA_OPTS"
-fi
-grep -q 'rclone flags' <<<"$out" || fail "no hint about rclone flags: $out"
-grep -q 'dumping' <<<"$out" && fail "the dump ran before S3_UPLOAD_EXTRA_OPTS was checked"
 
 log "restore into an older server (pg_restore ${TARGET_PG_VERSION} -> postgres ${SOURCE_PG_VERSION})"
 psql_in "$ID-src" postgres "CREATE DATABASE app_old"
