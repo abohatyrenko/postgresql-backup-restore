@@ -9,7 +9,7 @@ that runs backups as a Kubernetes CronJob.
 
 Features:
 
-- PostgreSQL 17 client tools: backs up servers from 9.2 to 17, restores into older servers too (as long as the dump uses no newer features)
+- PostgreSQL 18 client tools: backs up servers from 9.2 to 18, restores into older servers too (as long as the dump uses no newer features)
 - every dump is validated with `pg_restore --list`, rclone verifies size and checksum of the upload
 - optional client-side encryption with [age](https://age-encryption.org)
 - retention (`BACKUP_KEEP_DAYS`)
@@ -67,7 +67,7 @@ The script also runs outside Docker; it needs `bash`, `pg_dump`/`pg_restore`/`ps
 | `POSTGRESQL_BACKUP_USER` | (required) | |
 | `PG_PASS_BACKUP` | | |
 | `PG_DUMP_EXTRA_OPTS` | | e.g. `--schema=public` or `--exclude-table-data=audit_log` |
-| `BACKUP_KEEP_DAYS` | `0` (keep all) | Delete backups older than N days after a successful backup. The newest backup is never deleted |
+| `BACKUP_KEEP_DAYS` | `0` (keep all) | Delete backups older than N days after a successful backup. The newest backup is never deleted. A failed cleanup is reported (log, Slack) without failing the backup |
 | `AGE_RECIPIENTS` | | age public key(s), comma or space separated. When set, backups are encrypted |
 
 **Restore**
@@ -141,11 +141,11 @@ See the [chart README](helm/README.md).
 ## What is tested
 
 Every CI run executes [`test/e2e.sh`](test/e2e.sh) against real PostgreSQL servers and an S3-compatible
-server ([SeaweedFS](https://github.com/seaweedfs/seaweedfs)) in Docker, in both version directions (13 → 17, 17 → 16):
+server ([SeaweedFS](https://github.com/seaweedfs/seaweedfs)) in Docker, in both version directions (13 → 18, 18 → 16):
 
 - encrypted and plain backup/restore, retention, restore of the latest or a specific backup, repeated restores
 - restore into an older server, rollback of a restore that fails midway
-- restore guard, missing decryption key and bad credentials fail the job
+- restore guard, missing decryption key and bad credentials fail the job; a backup killed by `SIGTERM` (job deadline, eviction) is reported as failed
 - TLS: `verify-full` with a CA certificate; an unknown CA, a host name mismatch and a server without TLS are rejected
 - AWS credentials from a shared credentials file instead of environment variables; no credentials or a bucket that can't be listed fail the job
 - rclone flags in `S3_UPLOAD_EXTRA_OPTS` (multipart upload); aws-cli options from image 1.x are rejected before the dump
@@ -165,8 +165,8 @@ docker build -t postgresql-backup-restore .
 test/e2e.sh   # see "What is tested" above
 ```
 
-Older PostgreSQL client versions: `docker build --build-arg PG_VERSION=16 .` (any major that has an official
-`postgres:<major>-alpine` image; only its client tools are copied into the image).
+Older PostgreSQL client versions: `docker build --build-arg PG_VERSION=17 .` (any major that has an official
+`postgres:<major>-alpine<ALPINE_VERSION>` image; only its client tools are copied into the image).
 
 ### Release
 

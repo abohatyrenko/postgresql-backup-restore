@@ -91,6 +91,8 @@ fi
 COMMAND="${1:-}"
 TMP_DIR=""
 SUMMARY=""
+# Set when the command ran to its end, see on_exit
+FINISHED=""
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -133,6 +135,9 @@ ping_url() {
 
 on_exit() {
   local rc=$?
+  # When the shell is killed by a signal (job deadline, pod eviction), $? is the status of the
+  # last finished command, usually 0: without this an interrupted run is reported as a success.
+  if ((rc == 0)) && [[ -z "$FINISHED" ]]; then rc=143; fi
   [[ -n "$TMP_DIR" && -d "$TMP_DIR" ]] && rm -rf -- "$TMP_DIR"
   case "$COMMAND" in backup | restore) ;; *) return "$rc" ;; esac
 
@@ -250,18 +255,24 @@ do_backup() {
   rcl copyto "${upload_opts[@]}" "$upload_file" "$s3_target"
 
   SUMMARY="${SUMMARY} -> ${s3_target}"
-  [[ "$BACKUP_KEEP_DAYS" -gt 0 ]] && prune_backups "$s3_dir"
+  # 10#: a value like 08 is decimal, not invalid octal
+  if ((10#$BACKUP_KEEP_DAYS > 0)); then prune_backups "$s3_dir"; fi
 
   info "backup finished: ${s3_target}"
 }
 
 # Deletes backups older than BACKUP_KEEP_DAYS. Only files following the
 # <db>-<YYYYmmddTHHMMSSZ>.dump[.age] naming are considered; the newest backup is always kept.
+# The new backup is already uploaded when this runs, so a failure here is reported but does
+# not fail the backup: a failed job would be retried and dump the database once more.
 prune_backups() {
-  local s3_dir="$1" cutoff listing name ts newest
-  cutoff="$(date -u -d "-${BACKUP_KEEP_DAYS} days" +%Y%m%dT%H%M%SZ)"
-  # Not read in a process substitution, where a listing error would not stop the script
-  listing="$(list_backups "$s3_dir")"
+  local s3_dir="$1" cutoff listing name ts newest not_deleted=0
+  cutoff="$(date -u -d "-$((10#$BACKUP_KEEP_DAYS)) days" +%Y%m%dT%H%M%SZ)"
+  # Not read in a process substitution, where a listing error would go unnoticed
+  if ! listing="$(list_backups "$s3_dir")"; then
+    report_prune_failure "expired backups were not removed"
+    return 0
+  fi
   newest="$(tail -n 1 <<<"$listing")"
   info "removing backups older than ${BACKUP_KEEP_DAYS} day(s) (before ${cutoff})"
 
@@ -271,9 +282,15 @@ prune_backups() {
     ts="${BASH_REMATCH[1]}"
     if [[ "$ts" < "$cutoff" && "$name" != "$newest" ]]; then
       info "deleting expired backup ${name}"
-      rcl deletefile "${s3_dir}/${name}"
+      rcl deletefile "${s3_dir}/${name}" || not_deleted=$((not_deleted + 1))
     fi
   done <<<"$listing"
+  if ((not_deleted > 0)); then report_prune_failure "${not_deleted} expired backup(s) could not be deleted"; fi
+}
+
+report_prune_failure() {
+  warn "$1"
+  [[ "$NOTIFY_ON" == "never" ]] || notify_slack ":warning: backup ${SUMMARY} succeeded, but $1; check the job logs"
 }
 
 do_restore() {
@@ -368,3 +385,4 @@ case "$COMMAND" in
   -h | --help | help) usage ;;
   *) usage; exit 64 ;;
 esac
+FINISHED=1

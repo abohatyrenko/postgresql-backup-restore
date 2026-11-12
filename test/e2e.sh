@@ -7,9 +7,9 @@
 #
 # Environment:
 #   SOURCE_PG_VERSION  postgres version to back up from (default 14)
-#   TARGET_PG_VERSION  postgres version to restore into, also used for the TLS server (default 17)
+#   TARGET_PG_VERSION  postgres version to restore into, also used for the TLS server (default 18)
 #   SKIP_BUILD         set to reuse an already built image
-#   S3_IMAGE           S3-compatible server image (default chrislusf/seaweedfs:latest)
+#   S3_IMAGE           S3-compatible server image (default chrislusf/seaweedfs:4.53)
 
 set -Eeuo pipefail
 
@@ -17,8 +17,8 @@ cd "$(dirname "$0")/.."
 
 IMAGE="${1:-postgresql-backup-restore:e2e}"
 SOURCE_PG_VERSION="${SOURCE_PG_VERSION:-14}"
-TARGET_PG_VERSION="${TARGET_PG_VERSION:-17}"
-S3_IMAGE="${S3_IMAGE:-chrislusf/seaweedfs:latest}"
+TARGET_PG_VERSION="${TARGET_PG_VERSION:-18}"
+S3_IMAGE="${S3_IMAGE:-chrislusf/seaweedfs:4.53}"
 ID="pgbr-e2e-$$"
 NET="$ID"
 PASS="s3cr3t:p@ss'word"
@@ -58,7 +58,7 @@ AGE_PUB="$(grep -o 'age1[0-9a-z]*' <<<"$AGE_KEY")"
 
 log "generating TLS certificates (test CA, server certificate for $ID-tls, unrelated CA)"
 docker volume create "$ID-certs" >/dev/null
-docker run --rm -v "$ID-certs:/certs" alpine:3 sh -euc "
+docker run --rm -v "$ID-certs:/certs" alpine:3.24 sh -euc "
   apk add --no-cache -q openssl >/dev/null
   cd /certs
   for ca in ca other-ca; do
@@ -248,7 +248,7 @@ fi
 
 log "AWS credentials from a shared credentials file, no AWS_* keys in the environment"
 docker volume create "$ID-aws" >/dev/null
-docker run --rm -v "$ID-aws:/aws" alpine:3 sh -c \
+docker run --rm -v "$ID-aws:/aws" alpine:3.24 sh -c \
   'printf "[default]\naws_access_key_id = test-key\naws_secret_access_key = test-secret\n" >/aws/credentials && chmod 644 /aws/credentials'
 AWS_FILE_ENV=(-v "$ID-aws:/aws:ro" -e AWS_SHARED_CREDENTIALS_FILE=/aws/credentials)
 before="$(run_no_aws_keys "${AWS_FILE_ENV[@]}" "$IMAGE" list | wc -l)"
@@ -266,5 +266,14 @@ log "backup without any AWS credentials must fail"
 if run_no_aws_keys "$IMAGE" backup; then
   fail "backup succeeded without AWS credentials"
 fi
+
+log "backup killed by SIGTERM (job deadline, pod eviction) must be reported as failed"
+# pg_dump waits for the table lock, so the backup is still running when it is stopped
+docker exec -d -e PGPASSWORD="$PASS" "$ID-src" psql -U postgres -d app -c "BEGIN; LOCK TABLE public.users; SELECT pg_sleep(60)"
+(sleep 5 && docker stop "$ID-killed" >/dev/null) &
+out="$(run --name "$ID-killed" "$IMAGE" backup 2>&1)" || true
+wait
+grep -q 'dumping' <<<"$out" || fail "the backup did not start: $out"
+grep -q 'backup .* failed with exit code 143' <<<"$out" || fail "killed backup was not reported as failed: $out"
 
 log "ALL TESTS PASSED"

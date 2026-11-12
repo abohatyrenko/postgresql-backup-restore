@@ -86,22 +86,6 @@ Name of the Secret holding credentials, empty if there is none
 {{- end }}
 
 {{/*
-Fail early on values from chart versions < 1.0.0. Called from validate.yaml.
-Remove in 2.0.0.
-*/}}
-{{- define "postgresql-backup-restore.validateValues" -}}
-{{- if and .Values.app .Values.app.cronSchedule }}
-{{- fail "app.cronSchedule was renamed to backup.schedule" }}
-{{- end }}
-{{- if .Values.jobAnnotations }}
-{{- fail "jobAnnotations was renamed to podAnnotations" }}
-{{- end }}
-{{- if .Values.notificationSlack }}
-{{- fail "notificationSlack was replaced by secrets.slack_webhook_url and deployNotification.enabled" }}
-{{- end }}
-{{- end }}
-
-{{/*
 Environment variables for a job. Each job only gets the credentials it needs:
 backup jobs never see the restore password / decryption key and vice versa.
 Usage: include "postgresql-backup-restore.env" (dict "root" $ "env" .Values.backup.env "component" "backup")

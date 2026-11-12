@@ -5,6 +5,60 @@ entries:
       artifacthub.io/category: database
       artifacthub.io/changes: |
         - kind: changed
+          description: PostgreSQL 18 client tools, so servers up to version 18 can be backed up
+        - kind: fixed
+          description: A backup or restore killed by SIGTERM (job deadline, pod eviction) is reported as failed to Slack and the heartbeat, not as a success
+        - kind: fixed
+          description: BACKUP_KEEP_DAYS with a leading zero (e.g. 08) no longer skips the cleanup silently
+        - kind: changed
+          description: A failed cleanup of expired backups is reported (log, Slack) without failing the backup, which is already uploaded
+        - kind: fixed
+          description: deployNotification no longer fails the release when the Secret has no slack_webhook_url key; its pod follows nodeSelector and tolerations
+        - kind: removed
+          description: Checks for values of chart versions older than 1.0.0
+      artifacthub.io/displayName: PostgreSQL Backup & Restore
+      artifacthub.io/images: |
+        - name: postgresql-backup-restore
+          image: abohatyrenko/postgresql-backup-restore:2.1.0
+      artifacthub.io/license: MIT
+      artifacthub.io/links: |
+        - name: Source
+          url: https://github.com/abohatyrenko/postgresql-backup-restore
+        - name: Documentation
+          url: https://github.com/abohatyrenko/postgresql-backup-restore#readme
+        - name: Docker image
+          url: https://hub.docker.com/r/abohatyrenko/postgresql-backup-restore
+    apiVersion: v2
+    appVersion: 2.1.0
+    created: "2026-11-12T23:00:50.266656+03:00"
+    description: Scheduled PostgreSQL backups (pg_dump) to S3-compatible storage with
+      encryption, retention and restore
+    digest: 4e42053658b9cbc2c06a6b60024ddf5e9bdf7196ae8260906bac8d7b4493d942
+    home: https://github.com/abohatyrenko/postgresql-backup-restore
+    icon: https://www.postgresql.org/media/img/about/press/elephant.png
+    keywords:
+    - postgresql
+    - postgres
+    - backup
+    - restore
+    - pg_dump
+    - s3
+    - cronjob
+    kubeVersion: '>=1.21.0-0'
+    maintainers:
+    - name: Anatolii Bohatyrenko
+      url: https://github.com/abohatyrenko
+    name: postgresql-backup-restore
+    sources:
+    - https://github.com/abohatyrenko/postgresql-backup-restore
+    type: application
+    urls:
+    - https://abohatyrenko.github.io/postgresql-backup-restore/helm/packages/postgresql-backup-restore-2.1.0.tgz
+    version: 2.1.0
+  - annotations:
+      artifacthub.io/category: database
+      artifacthub.io/changes: |
+        - kind: changed
           description: Image is 158 MB instead of 514 MB; built on alpine with only the PostgreSQL client tools, S3 is accessed with rclone instead of the AWS CLI
         - kind: changed
           description: "Breaking: S3_UPLOAD_EXTRA_OPTS takes rclone flags instead of aws s3 cp options; see Upgrading to 2.0.0 in the README"
@@ -278,4 +332,4 @@ entries:
     urls:
     - https://abohatyrenko.github.io/postgresql-backup-restore/helm/packages/postgresql-backup-restore-0.1.0.tgz
     version: 0.1.0
-generated: "2026-11-05T12:52:53.117967+03:00"
+generated: "2026-11-12T23:00:50.265479+03:00"
