@@ -113,14 +113,14 @@ COMMON_ENV=(
   -e RCLONE_CONFIG_E2E_ENDPOINT="http://$ID-s3:8333"
   -e S3_BUCKET_PATH=s3://backups/postgresql
   -e PGSSLMODE=disable
-  -e BACKUP_DATABASE_NAME=app
-  -e POSTGRESQL_BACKUP_HOST="$ID-src"
-  -e POSTGRESQL_BACKUP_USER=postgres
-  -e PG_PASS_BACKUP="$PASS"
-  -e RESTORE_DATABASE_NAME=app_staging
-  -e POSTGRESQL_RESTORE_HOST="$ID-dst"
-  -e POSTGRESQL_RESTORE_USER=postgres
-  -e PG_PASS_RESTORE="$PASS"
+  -e BACKUP_DATABASE=app
+  -e BACKUP_HOST="$ID-src"
+  -e BACKUP_USER=postgres
+  -e BACKUP_PASSWORD="$PASS"
+  -e RESTORE_DATABASE=app_staging
+  -e RESTORE_HOST="$ID-dst"
+  -e RESTORE_USER=postgres
+  -e RESTORE_PASSWORD="$PASS"
 )
 # run_no_aws_keys: without AWS_ENV, for the credential chain tests at the end
 run_no_aws_keys() { docker run --rm --network "$NET" --read-only --tmpfs /tmp "${COMMON_ENV[@]}" "$@"; }
@@ -192,12 +192,12 @@ grep -q 'dumping' <<<"$out" && fail "the dump ran before S3_UPLOAD_EXTRA_OPTS wa
 
 log "restore into an older server (pg_restore ${TARGET_PG_VERSION} -> postgres ${SOURCE_PG_VERSION})"
 psql_in "$ID-src" postgres "CREATE DATABASE app_old"
-run -e RESTORE_CONFIRM=app_old -e RESTORE_DATABASE_NAME=app_old -e POSTGRESQL_RESTORE_HOST="$ID-src" "$IMAGE" restore "$file"
+run -e RESTORE_CONFIRM=app_old -e RESTORE_DATABASE=app_old -e RESTORE_HOST="$ID-src" "$IMAGE" restore "$file"
 users="$(psql_in "$ID-src" app_old 'SELECT count(*) FROM public.users')"
 [[ "$users" == 1000 ]] || fail "expected 1000 users in app_old, got $users"
 
 log "failed restore must exit non-zero"
-if run -e RESTORE_CONFIRM=app_staging -e POSTGRESQL_RESTORE_USER=nobody "$IMAGE" restore "$file"; then
+if run -e RESTORE_CONFIRM=app_staging -e RESTORE_USER=nobody "$IMAGE" restore "$file"; then
   fail "restore with bad credentials reported success"
 fi
 
@@ -223,11 +223,11 @@ TLS_ENV=(
   -v "$ID-certs:/certs:ro"
   -e PGSSLMODE=verify-full
   -e PGSSLROOTCERT=/certs/ca.crt
-  -e BACKUP_DATABASE_NAME=tls_app
-  -e POSTGRESQL_BACKUP_HOST="$ID-tls"
-  -e RESTORE_DATABASE_NAME=tls_restore
+  -e BACKUP_DATABASE=tls_app
+  -e BACKUP_HOST="$ID-tls"
+  -e RESTORE_DATABASE=tls_restore
   -e RESTORE_CONFIRM=tls_restore
-  -e POSTGRESQL_RESTORE_HOST="$ID-tls"
+  -e RESTORE_HOST="$ID-tls"
 )
 
 log "backup + restore over TLS with certificate verification (verify-full)"
@@ -242,7 +242,7 @@ if run "${TLS_ENV[@]}" -e PGSSLROOTCERT=/certs/other-ca.crt "$IMAGE" backup; the
 fi
 
 log "verify-full must reject a host name that is not in the certificate"
-if run "${TLS_ENV[@]}" -e POSTGRESQL_BACKUP_HOST="$ID-tls-alias" "$IMAGE" backup; then
+if run "${TLS_ENV[@]}" -e BACKUP_HOST="$ID-tls-alias" "$IMAGE" backup; then
   fail "verify-full accepted a host name mismatch"
 fi
 

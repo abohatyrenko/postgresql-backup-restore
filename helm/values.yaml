@@ -38,6 +38,10 @@ backup:
   activeDeadlineSeconds: 21600 # 6 hours
   ttlSecondsAfterFinished: 86400
   args: ["backup"]
+  # Read BACKUP_PASSWORD from a separate Secret instead of existingSecret / secrets
+  passwordSecret:
+    name: ""
+    key: BACKUP_PASSWORD
   # Environment variables only for backup jobs
   env: {}
     # BACKUP_KEEP_DAYS: "30"
@@ -54,27 +58,32 @@ restore:
   ttlSecondsAfterFinished: 86400
   # Add a backup file name to restore a specific backup instead of the latest one
   args: ["restore"]
+  # Read RESTORE_PASSWORD from a separate Secret instead of existingSecret / secrets.
+  # Useful to make sure a restore can never run with production credentials.
+  passwordSecret:
+    name: ""
+    key: RESTORE_PASSWORD
   # Environment variables only for restore jobs
   env: {}
-    # RESTORE_CONFIRM must equal RESTORE_DATABASE_NAME, otherwise the restore is refused
+    # RESTORE_CONFIRM must equal RESTORE_DATABASE, otherwise the restore is refused
     # RESTORE_CONFIRM: ""
-    # RESTORE_SOURCE_NAME: ""
+    # RESTORE_SOURCE_DATABASE: ""
 
 # Plain environment variables for all jobs
 env: {}
   # S3_BUCKET_PATH: "s3://my-bucket/postgresql"
   # S3_ENDPOINT: "https://fra1.digitaloceanspaces.com" # leave empty for AWS S3
-  # AWS_REGION: "eu-central-1"
+  # AWS_REGION: "eu-central-1" # region of the bucket
 
-  # BACKUP_DATABASE_NAME: ""
-  # POSTGRESQL_BACKUP_HOST: ""
-  # POSTGRESQL_BACKUP_USER: ""
-  # POSTGRESQL_BACKUP_PORT: "5432"
+  # BACKUP_DATABASE: ""
+  # BACKUP_HOST: ""
+  # BACKUP_USER: ""
+  # BACKUP_PORT: "5432"
 
-  # RESTORE_DATABASE_NAME: ""
-  # POSTGRESQL_RESTORE_HOST: ""
-  # POSTGRESQL_RESTORE_USER: ""
-  # POSTGRESQL_RESTORE_PORT: "5432"
+  # RESTORE_DATABASE: ""
+  # RESTORE_HOST: ""
+  # RESTORE_USER: ""
+  # RESTORE_PORT: "5432"
 
   # PGSSLMODE: "verify-full"
   # PGSSLROOTCERT: "/etc/pg-ca/ca-certificate.crt"
@@ -83,36 +92,22 @@ env: {}
 extraEnv: []
 envFrom: []
 
-# Use an existing Secret instead of creating one. It may contain any of these keys:
-# aws_access_key_id, aws_secret_access_key, postgresql_backup, postgresql_restore,
-# age_identity, slack_webhook_url
+# Secret variables. Keys are named after the environment variables they set.
+# Use an existing Secret instead of creating one; it may contain any of the keys below.
 existingSecret: ""
 
 # Values for the Secret created by the chart (ignored when existingSecret is set).
 # Empty values are not rendered.
 secrets:
   # Leave AWS keys empty to use IRSA / instance profile / workload identity
-  aws_access_key_id: ""
-  aws_secret_access_key: ""
-  postgresql_backup: ""
-  postgresql_restore: ""
+  AWS_ACCESS_KEY_ID: ""
+  AWS_SECRET_ACCESS_KEY: ""
+  BACKUP_PASSWORD: ""
+  RESTORE_PASSWORD: ""
   # age secret key (AGE-SECRET-KEY-1...), needed to restore encrypted backups.
   # Better keep it out of the backup cluster and only provide it when restoring.
-  age_identity: ""
-  slack_webhook_url: ""
-
-# Keep DB passwords in separate Secrets (takes precedence over the secret above).
-# Useful to make sure a restore can never run with production credentials.
-# backup_secret/restore_secret are snake_case unlike other values, kept for compatibility.
-dbPasswordSecret:
-  backup_secret:
-    enabled: false
-    name: ""
-    key: postgresql_backup
-  restore_secret:
-    enabled: false
-    name: ""
-    key: postgresql_restore
+  AGE_IDENTITY: ""
+  SLACK_WEBHOOK_URL: ""
 
 # Scratch space for dump files. The whole dump is written here before upload,
 # so sizeLimit must be larger than the (compressed) dump.
@@ -166,7 +161,7 @@ extraVolumeMounts: []
   #   mountPath: /etc/pg-ca
   #   readOnly: true
 
-# Slack message on helm install/upgrade/rollback (uses secrets.slack_webhook_url).
+# Slack message on helm install/upgrade/rollback (uses secrets.SLACK_WEBHOOK_URL).
 # Backup/restore failures are reported by the jobs themselves when the webhook is set.
 deployNotification:
   enabled: false

@@ -25,24 +25,24 @@ S3_BUCKET_PATH="${S3_BUCKET_PATH%/}"
 S3_ENDPOINT="${S3_ENDPOINT:-}"
 S3_PROVIDER="${S3_PROVIDER:-}"
 S3_UPLOAD_EXTRA_OPTS="${S3_UPLOAD_EXTRA_OPTS:-}"
-export AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-eu-central-1}}"
+S3_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
 
 # Backup source
-BACKUP_DATABASE_NAME="${BACKUP_DATABASE_NAME:-}"
-POSTGRESQL_BACKUP_HOST="${POSTGRESQL_BACKUP_HOST:-}"
-POSTGRESQL_BACKUP_PORT="${POSTGRESQL_BACKUP_PORT:-5432}"
-POSTGRESQL_BACKUP_USER="${POSTGRESQL_BACKUP_USER:-}"
-PG_PASS_BACKUP="${PG_PASS_BACKUP:-}"
+BACKUP_DATABASE="${BACKUP_DATABASE:-}"
+BACKUP_HOST="${BACKUP_HOST:-}"
+BACKUP_PORT="${BACKUP_PORT:-5432}"
+BACKUP_USER="${BACKUP_USER:-}"
+BACKUP_PASSWORD="${BACKUP_PASSWORD:-}"
 PG_DUMP_EXTRA_OPTS="${PG_DUMP_EXTRA_OPTS:-}"
 BACKUP_KEEP_DAYS="${BACKUP_KEEP_DAYS:-0}"
 
 # Restore target
-RESTORE_DATABASE_NAME="${RESTORE_DATABASE_NAME:-}"
-RESTORE_SOURCE_NAME="${RESTORE_SOURCE_NAME:-${BACKUP_DATABASE_NAME:-$RESTORE_DATABASE_NAME}}"
-POSTGRESQL_RESTORE_HOST="${POSTGRESQL_RESTORE_HOST:-}"
-POSTGRESQL_RESTORE_PORT="${POSTGRESQL_RESTORE_PORT:-5432}"
-POSTGRESQL_RESTORE_USER="${POSTGRESQL_RESTORE_USER:-}"
-PG_PASS_RESTORE="${PG_PASS_RESTORE:-}"
+RESTORE_DATABASE="${RESTORE_DATABASE:-}"
+RESTORE_SOURCE_DATABASE="${RESTORE_SOURCE_DATABASE:-${BACKUP_DATABASE:-$RESTORE_DATABASE}}"
+RESTORE_HOST="${RESTORE_HOST:-}"
+RESTORE_PORT="${RESTORE_PORT:-5432}"
+RESTORE_USER="${RESTORE_USER:-}"
+RESTORE_PASSWORD="${RESTORE_PASSWORD:-}"
 RESTORE_CONFIRM="${RESTORE_CONFIRM:-}"
 RESTORE_ROLE="${RESTORE_ROLE:-}"
 RESTORE_CLEAN="${RESTORE_CLEAN:-true}"
@@ -75,7 +75,6 @@ export PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-30}"
 export RCLONE_CONFIG="${RCLONE_CONFIG:-/dev/null}"
 export RCLONE_CONFIG_S3URL_TYPE=s3
 export RCLONE_CONFIG_S3URL_ENV_AUTH=true
-export RCLONE_CONFIG_S3URL_REGION="$AWS_REGION"
 # Backup credentials usually may not create buckets
 export RCLONE_CONFIG_S3URL_NO_CHECK_BUCKET=true
 if [[ -n "$S3_ENDPOINT" ]]; then
@@ -87,6 +86,7 @@ if [[ -n "$S3_ENDPOINT" ]]; then
 else
   export RCLONE_CONFIG_S3URL_PROVIDER="${S3_PROVIDER:-AWS}"
 fi
+if [[ -n "$S3_REGION" ]]; then export RCLONE_CONFIG_S3URL_REGION="$S3_REGION"; fi
 
 COMMAND="${1:-}"
 TMP_DIR=""
@@ -206,15 +206,15 @@ validate_dump() {
 # ---------------------------------------------------------------------------
 
 do_backup() {
-  require_env S3_BUCKET_PATH BACKUP_DATABASE_NAME POSTGRESQL_BACKUP_HOST POSTGRESQL_BACKUP_USER
+  require_env S3_BUCKET_PATH BACKUP_DATABASE BACKUP_HOST BACKUP_USER
   [[ "$BACKUP_KEEP_DAYS" =~ ^[0-9]+$ ]] || die "BACKUP_KEEP_DAYS must be a non-negative integer"
   check_upload_opts
 
   local timestamp file_name s3_dir local_file upload_file s3_target
   timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
-  file_name="${BACKUP_DATABASE_NAME}-${timestamp}.dump"
-  s3_dir="${S3_BUCKET_PATH}/${BACKUP_DATABASE_NAME}"
-  SUMMARY="of ${BACKUP_DATABASE_NAME}@${POSTGRESQL_BACKUP_HOST}"
+  file_name="${BACKUP_DATABASE}-${timestamp}.dump"
+  s3_dir="${S3_BUCKET_PATH}/${BACKUP_DATABASE}"
+  SUMMARY="of ${BACKUP_DATABASE}@${BACKUP_HOST}"
 
   make_tmp_dir
   local_file="${TMP_DIR}/${file_name}"
@@ -222,12 +222,12 @@ do_backup() {
   local -a dump_opts=()
   read -r -a dump_opts <<<"$PG_DUMP_EXTRA_OPTS"
 
-  info "dumping ${BACKUP_DATABASE_NAME} from ${POSTGRESQL_BACKUP_HOST}:${POSTGRESQL_BACKUP_PORT} (sslmode=${PGSSLMODE})"
-  PGPASSWORD="$PG_PASS_BACKUP" pg_dump \
-    --host="$POSTGRESQL_BACKUP_HOST" \
-    --port="$POSTGRESQL_BACKUP_PORT" \
-    --username="$POSTGRESQL_BACKUP_USER" \
-    --dbname="$BACKUP_DATABASE_NAME" \
+  info "dumping ${BACKUP_DATABASE} from ${BACKUP_HOST}:${BACKUP_PORT} (sslmode=${PGSSLMODE})"
+  PGPASSWORD="$BACKUP_PASSWORD" pg_dump \
+    --host="$BACKUP_HOST" \
+    --port="$BACKUP_PORT" \
+    --username="$BACKUP_USER" \
+    --dbname="$BACKUP_DATABASE" \
     --format=custom \
     --no-password \
     --file="$local_file" \
@@ -276,7 +276,7 @@ prune_backups() {
   newest="$(tail -n 1 <<<"$listing")"
   info "removing backups older than ${BACKUP_KEEP_DAYS} day(s) (before ${cutoff})"
 
-  local pattern="^${BACKUP_DATABASE_NAME//./\\.}-([0-9]{8}T[0-9]{6}Z)\\.dump(\\.age)?$"
+  local pattern="^${BACKUP_DATABASE//./\\.}-([0-9]{8}T[0-9]{6}Z)\\.dump(\\.age)?$"
   while IFS= read -r name; do
     [[ "$name" =~ $pattern ]] || continue
     ts="${BASH_REMATCH[1]}"
@@ -294,12 +294,12 @@ report_prune_failure() {
 }
 
 do_restore() {
-  require_env S3_BUCKET_PATH RESTORE_DATABASE_NAME RESTORE_SOURCE_NAME POSTGRESQL_RESTORE_HOST POSTGRESQL_RESTORE_USER
-  [[ "$RESTORE_CONFIRM" == "$RESTORE_DATABASE_NAME" ]] \
-    || die "restore overwrites ${RESTORE_DATABASE_NAME}@${POSTGRESQL_RESTORE_HOST}; set RESTORE_CONFIRM=${RESTORE_DATABASE_NAME} to proceed"
+  require_env S3_BUCKET_PATH RESTORE_DATABASE RESTORE_SOURCE_DATABASE RESTORE_HOST RESTORE_USER
+  [[ "$RESTORE_CONFIRM" == "$RESTORE_DATABASE" ]] \
+    || die "restore overwrites ${RESTORE_DATABASE}@${RESTORE_HOST}; set RESTORE_CONFIRM=${RESTORE_DATABASE} to proceed"
 
-  local s3_dir="${S3_BUCKET_PATH}/${RESTORE_SOURCE_NAME}" file_name="${1:-}" local_file listing
-  SUMMARY="of ${RESTORE_DATABASE_NAME}@${POSTGRESQL_RESTORE_HOST}"
+  local s3_dir="${S3_BUCKET_PATH}/${RESTORE_SOURCE_DATABASE}" file_name="${1:-}" local_file listing
+  SUMMARY="of ${RESTORE_DATABASE}@${RESTORE_HOST}"
 
   if [[ -z "$file_name" ]]; then
     listing="$(list_backups "$s3_dir")"
@@ -344,14 +344,14 @@ do_restore() {
   # (e.g. "SET transaction_timeout" from v17), which are dropped from the preamble here.
   # The preamble is a few dozen lines; only the first 100 are filtered so a table row
   # that happens to look like this setting is never touched.
-  info "restoring into ${RESTORE_DATABASE_NAME} on ${POSTGRESQL_RESTORE_HOST}:${POSTGRESQL_RESTORE_PORT} (sslmode=${PGSSLMODE})"
+  info "restoring into ${RESTORE_DATABASE} on ${RESTORE_HOST}:${RESTORE_PORT} (sslmode=${PGSSLMODE})"
   pg_restore --file=- "${restore_opts[@]}" "${extra_opts[@]}" "$local_file" \
     | awk 'NR <= 100 && /^SET transaction_timeout = /{ next } { print }' \
-    | PGPASSWORD="$PG_PASS_RESTORE" psql \
-      --host="$POSTGRESQL_RESTORE_HOST" \
-      --port="$POSTGRESQL_RESTORE_PORT" \
-      --username="$POSTGRESQL_RESTORE_USER" \
-      --dbname="$RESTORE_DATABASE_NAME" \
+    | PGPASSWORD="$RESTORE_PASSWORD" psql \
+      --host="$RESTORE_HOST" \
+      --port="$RESTORE_PORT" \
+      --username="$RESTORE_USER" \
+      --dbname="$RESTORE_DATABASE" \
       --no-password \
       --no-psqlrc \
       --quiet \
@@ -359,21 +359,21 @@ do_restore() {
       "${psql_opts[@]}" \
       >/dev/null
 
-  info "restore finished: ${RESTORE_DATABASE_NAME} from ${file_name}"
+  info "restore finished: ${RESTORE_DATABASE} from ${file_name}"
 }
 
 do_list() {
   require_env S3_BUCKET_PATH
-  local name="${1:-${BACKUP_DATABASE_NAME:-$RESTORE_SOURCE_NAME}}"
-  [[ -n "$name" ]] || die "pass a database name or set BACKUP_DATABASE_NAME"
+  local name="${1:-${BACKUP_DATABASE:-$RESTORE_SOURCE_DATABASE}}"
+  [[ -n "$name" ]] || die "pass a database name or set BACKUP_DATABASE"
   list_backups "${S3_BUCKET_PATH}/${name}"
 }
 
 usage() {
   cat >&2 <<EOF
 Usage:
-  ${SCRIPT_NAME} backup                 dump BACKUP_DATABASE_NAME and upload it to S3
-  ${SCRIPT_NAME} restore [file-name]    restore RESTORE_DATABASE_NAME (latest backup if no file given)
+  ${SCRIPT_NAME} backup                 dump BACKUP_DATABASE and upload it to S3
+  ${SCRIPT_NAME} restore [file-name]    restore RESTORE_DATABASE (latest backup if no file given)
   ${SCRIPT_NAME} list [database-name]   list available backups, oldest first
 EOF
 }

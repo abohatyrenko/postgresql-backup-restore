@@ -26,10 +26,10 @@ Features:
 docker run --rm \
   -e AWS_ACCESS_KEY_ID=... -e AWS_SECRET_ACCESS_KEY=... \
   -e S3_BUCKET_PATH=s3://my-bucket/postgresql \
-  -e BACKUP_DATABASE_NAME=app \
-  -e POSTGRESQL_BACKUP_HOST=db.example.com \
-  -e POSTGRESQL_BACKUP_USER=backup \
-  -e PG_PASS_BACKUP=... \
+  -e BACKUP_DATABASE=app \
+  -e BACKUP_HOST=db.example.com \
+  -e BACKUP_USER=backup \
+  -e BACKUP_PASSWORD=... \
   abohatyrenko/postgresql-backup-restore backup
 ```
 
@@ -37,8 +37,8 @@ Commands:
 
 | Command | Description |
 |---|---|
-| `backup` | Dump `BACKUP_DATABASE_NAME` and upload it to `S3_BUCKET_PATH/<db>/<db>-<YYYYmmddTHHMMSSZ>.dump[.age]` |
-| `restore [file]` | Restore the latest backup (or the given file name) of `RESTORE_SOURCE_NAME` into `RESTORE_DATABASE_NAME` |
+| `backup` | Dump `BACKUP_DATABASE` and upload it to `S3_BUCKET_PATH/<db>/<db>-<YYYYmmddTHHMMSSZ>.dump[.age]` |
+| `restore [file]` | Restore the latest backup (or the given file name) of `RESTORE_SOURCE_DATABASE` into `RESTORE_DATABASE` |
 | `list [db]` | List backups, oldest first |
 
 The script also runs outside Docker; it needs `bash`, `pg_dump`/`pg_restore`/`psql`, [rclone](https://rclone.org), `curl` and, for encryption, `age`.
@@ -52,7 +52,7 @@ The script also runs outside Docker; it needs `bash`, `pg_dump`/`pg_restore`/`ps
 | `S3_BUCKET_PATH` | (required) | e.g. `s3://my-bucket/postgresql` |
 | `S3_ENDPOINT` | AWS | Endpoint of S3-compatible storage, e.g. `https://fra1.digitaloceanspaces.com` |
 | `S3_PROVIDER` | `AWS`, or `Other` with `S3_ENDPOINT` | rclone [S3 provider](https://rclone.org/s3/#s3-provider), e.g. `DigitalOcean`, `Minio`, `Cloudflare` |
-| `AWS_REGION` | `eu-central-1` | Region of the bucket (on AWS it must match the bucket's region) |
+| `AWS_REGION` | | Region of the bucket. Required on AWS unless the bucket is in `us-east-1` |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | | Optional, any [AWS SDK credential source](https://docs.aws.amazon.com/sdkref/latest/guide/standardized-credentials.html) works: shared credentials file, IRSA, EKS Pod Identity, instance profile. With `S3_ENDPOINT` the EC2 instance profile is off (`AWS_EC2_METADATA_DISABLED=true`) unless set otherwise |
 | `S3_UPLOAD_EXTRA_OPTS` | | Extra [rclone flags](https://rclone.org/s3/) for the upload, e.g. `--s3-server-side-encryption AES256 --s3-storage-class STANDARD_IA` |
 | `RCLONE_<FLAG>` | | Any [rclone flag](https://rclone.org/flags/) for all S3 calls, e.g. `RCLONE_BWLIMIT=10M`, `RCLONE_RETRIES=5` |
@@ -61,11 +61,11 @@ The script also runs outside Docker; it needs `bash`, `pg_dump`/`pg_restore`/`ps
 
 | Variable | Default | Description |
 |---|---|---|
-| `BACKUP_DATABASE_NAME` | (required) | |
-| `POSTGRESQL_BACKUP_HOST` | (required) | |
-| `POSTGRESQL_BACKUP_PORT` | `5432` | DigitalOcean managed databases use `25060` |
-| `POSTGRESQL_BACKUP_USER` | (required) | |
-| `PG_PASS_BACKUP` | | |
+| `BACKUP_DATABASE` | (required) | |
+| `BACKUP_HOST` | (required) | |
+| `BACKUP_PORT` | `5432` | DigitalOcean managed databases use `25060` |
+| `BACKUP_USER` | (required) | |
+| `BACKUP_PASSWORD` | | |
 | `PG_DUMP_EXTRA_OPTS` | | e.g. `--schema=public` or `--exclude-table-data=audit_log` |
 | `BACKUP_KEEP_DAYS` | `0` (keep all) | Delete backups older than N days after a successful backup. The newest backup is never deleted. A failed cleanup is reported (log, Slack) without failing the backup |
 | `AGE_RECIPIENTS` | | age public key(s), comma or space separated. When set, backups are encrypted |
@@ -74,13 +74,13 @@ The script also runs outside Docker; it needs `bash`, `pg_dump`/`pg_restore`/`ps
 
 | Variable | Default | Description |
 |---|---|---|
-| `RESTORE_DATABASE_NAME` | (required) | Target database, must exist |
-| `RESTORE_CONFIRM` | (required) | Must equal `RESTORE_DATABASE_NAME` |
-| `RESTORE_SOURCE_NAME` | `BACKUP_DATABASE_NAME`, else `RESTORE_DATABASE_NAME` | Which database's backups to restore, e.g. restore `app` backups into `app_staging` |
-| `POSTGRESQL_RESTORE_HOST` | (required) | |
-| `POSTGRESQL_RESTORE_PORT` | `5432` | |
-| `POSTGRESQL_RESTORE_USER` | (required) | |
-| `PG_PASS_RESTORE` | | |
+| `RESTORE_DATABASE` | (required) | Target database, must exist |
+| `RESTORE_CONFIRM` | (required) | Must equal `RESTORE_DATABASE` |
+| `RESTORE_SOURCE_DATABASE` | `BACKUP_DATABASE`, else `RESTORE_DATABASE` | Which database's backups to restore, e.g. restore `app` backups into `app_staging` |
+| `RESTORE_HOST` | (required) | |
+| `RESTORE_PORT` | `5432` | |
+| `RESTORE_USER` | (required) | |
+| `RESTORE_PASSWORD` | | |
 | `RESTORE_ROLE` | | Run the restore as this role (`SET ROLE`), so restored objects are owned by it |
 | `RESTORE_CLEAN` | `true` | Drop existing objects before restoring them |
 | `RESTORE_NO_OWNER` / `RESTORE_NO_PRIVILEGES` | `true` | Skip ownership / GRANTs from the dump (useful when roles differ between environments) |
@@ -115,10 +115,10 @@ Only the public key is needed to make backups, so a compromised backup job canno
 ```sh
 docker run --rm \
   -e S3_BUCKET_PATH=s3://my-bucket/postgresql \
-  -e RESTORE_SOURCE_NAME=app \
-  -e RESTORE_DATABASE_NAME=app_staging -e RESTORE_CONFIRM=app_staging \
-  -e POSTGRESQL_RESTORE_HOST=staging-db.example.com \
-  -e POSTGRESQL_RESTORE_USER=app_staging -e PG_PASS_RESTORE=... \
+  -e RESTORE_SOURCE_DATABASE=app \
+  -e RESTORE_DATABASE=app_staging -e RESTORE_CONFIRM=app_staging \
+  -e RESTORE_HOST=staging-db.example.com \
+  -e RESTORE_USER=app_staging -e RESTORE_PASSWORD=... \
   abohatyrenko/postgresql-backup-restore restore                 # latest
   # ...                                   restore app-20261030T110000Z.dump
 ```
@@ -150,7 +150,8 @@ server ([SeaweedFS](https://github.com/seaweedfs/seaweedfs)) in Docker, in both 
 - AWS credentials from a shared credentials file instead of environment variables; no credentials or a bucket that can't be listed fail the job
 - rclone flags in `S3_UPLOAD_EXTRA_OPTS` (multipart upload); aws-cli options from image 1.x are rejected before the dump
 
-The Helm chart is linted and validated with kubeconform, and was tested manually in a kind cluster.
+The Helm chart is linted, its values are validated against `values.schema.json`, the rendered manifests are
+validated with kubeconform, and it was tested manually in a kind cluster.
 
 The image is scanned with [Trivy](https://trivy.dev) before it is published: CI fails on critical or high
 vulnerabilities that have a fix. The published `latest` image is rescanned every week.
@@ -172,55 +173,54 @@ Older PostgreSQL client versions: `docker build --build-arg PG_VERSION=17 .` (an
 
 The chart and the image share one version: `X.Y.Z` means chart `X.Y.Z` with image `X.Y.Z`.
 
-1. In `helm/Chart.yaml`, set `version`, `appVersion` and the image in `artifacthub.io/images` to `X.Y.Z`,
-   and describe the release in `artifacthub.io/changes`. `scripts/check-version.sh` checks they match.
-2. Package the chart and add it to the chart repository index:
-
-   ```sh
-   helm package ./helm -d helm/packages
-   # index only the new package, so existing entries keep their dates
-   tmp=$(mktemp -d) && mkdir "$tmp/packages" && cp helm/packages/postgresql-backup-restore-X.Y.Z.tgz "$tmp/packages/"
-   helm repo index "$tmp" --url https://abohatyrenko.github.io/postgresql-backup-restore/helm/ --merge helm/index.yaml
-   cp "$tmp/index.yaml" helm/index.yaml
-   ```
-
-3. Merge the PR. GitHub Pages publishes the chart from `main`.
-4. Push the tag `vX.Y.Z` on the merge commit. CI checks that the tag matches the chart version and that the
-   chart package exists, scans the image and publishes it to Docker Hub. Until then, the new chart version
-   points to an image that doesn't exist yet, so tag right after merging.
+1. Run `scripts/release.sh X.Y.Z` (sets the version in `helm/Chart.yaml`) and describe the release in
+   `artifacthub.io/changes` there.
+2. Merge the PR.
+3. Push the tag `vX.Y.Z` on the merge commit. CI checks that the tag matches the chart version, scans the image,
+   publishes it to Docker Hub and then publishes the chart to `oci://ghcr.io/abohatyrenko/charts`.
+4. Create the GitHub Release for the tag.
 
 Release candidates (`vX.Y.Z-rc.N`) are published without the `latest` and `X.Y` tags; pre-release chart
 versions are only installed with `--devel` or an explicit `--version`.
 
-## Upgrading to 2.0.0
+## Upgrading to 3.0.0
 
-- The image is 158 MB instead of 514 MB: it is built on Alpine with only the PostgreSQL client tools, and S3 is
-  accessed with [rclone](https://rclone.org) instead of the AWS CLI.
-- `S3_BUCKET_PATH`, `S3_ENDPOINT`, `AWS_REGION` and AWS credentials (keys, shared credentials file, IRSA, EKS Pod
-  Identity, instance profile) work as before. Existing backups are listed and restored as before.
-- `S3_UPLOAD_EXTRA_OPTS` takes rclone flags instead of `aws s3 cp` options, e.g. `--sse AES256` →
-  `--s3-server-side-encryption AES256`, `--storage-class STANDARD_IA` → `--s3-storage-class STANDARD_IA`.
-  A backup with the old options fails before the dump and names the option.
-- On AWS, set `AWS_REGION` to the bucket's region if it is not `eu-central-1`.
-- With `S3_ENDPOINT`, credentials from the EC2 instance metadata are not used unless `AWS_EC2_METADATA_DISABLED=false`.
-- Set the endpoint with `S3_ENDPOINT` (not `AWS_ENDPOINT_URL*`) and other S3 settings with rclone flags. The checksum
-  settings image 1.x made for S3-compatible storage (`AWS_REQUEST_CHECKSUM_CALCULATION`, ...) are not needed anymore.
-- The script is only at `/usr/local/bin/pg_backup_restore.sh`; `/opt/pg_backup_restore.sh` (image 0.x path) is gone.
-- A listing error (e.g. no access to the bucket) fails `restore` and `list` instead of reporting no backups.
+3.0.0 renames settings so that they follow one scheme. Nothing changes in the backups themselves: existing backups
+are listed and restored as before.
 
-## Upgrading to 1.0.0 (image 0.x / chart 0.1.x)
+**Environment variables**
 
-- Backup files are now named `<db>-<YYYYmmddTHHMMSSZ>.dump` (several backups per day, correct extension).
-  Old `*.tar.gz` backups can still be listed and restored by name. Retention only deletes files using the new naming.
-- The whole database is dumped. Set `PG_DUMP_EXTRA_OPTS=--schema=public` for the previous behaviour.
-- `S3_BUCKET_PATH`, `BACKUP_DATABASE_NAME`, hosts and users have no defaults anymore; ports default to `5432`
-  (set `25060` for DigitalOcean).
-- `PGSSLMODE` defaults to `require` (was `allow`).
-- Restore requires `RESTORE_CONFIRM`, fails on errors instead of reporting success, and restores backups of
-  `RESTORE_SOURCE_NAME` (defaults to `BACKUP_DATABASE_NAME`). The `--role=<db name>` restore option is now opt-in via `RESTORE_ROLE`.
-- The image entrypoint is the script itself: pass `backup` / `restore` as arguments.
-- Chart values: `app.cronSchedule` → `backup.schedule`, `jobAnnotations` → `podAnnotations`,
-  `command`/`args` → `backup.args` / `restore.args`, `notificationSlack` → `secrets.slack_webhook_url` + `deployNotification.enabled`.
+| Before | Now |
+|---|---|
+| `BACKUP_DATABASE_NAME` | `BACKUP_DATABASE` |
+| `POSTGRESQL_BACKUP_HOST` / `_PORT` / `_USER` | `BACKUP_HOST` / `BACKUP_PORT` / `BACKUP_USER` |
+| `PG_PASS_BACKUP` | `BACKUP_PASSWORD` |
+| `RESTORE_DATABASE_NAME` | `RESTORE_DATABASE` |
+| `RESTORE_SOURCE_NAME` | `RESTORE_SOURCE_DATABASE` |
+| `POSTGRESQL_RESTORE_HOST` / `_PORT` / `_USER` | `RESTORE_HOST` / `RESTORE_PORT` / `RESTORE_USER` |
+| `PG_PASS_RESTORE` | `RESTORE_PASSWORD` |
+
+`AWS_REGION` has no default anymore (it was `eu-central-1`): set it to the region of the bucket.
+
+**Chart**
+
+- The chart is installed from `oci://ghcr.io/abohatyrenko/charts/postgresql-backup-restore`; the Helm repository
+  at `abohatyrenko.github.io` is gone.
+- Keys of `secrets` and of an `existingSecret` are named after the variables they set:
+
+  | Before | Now |
+  |---|---|
+  | `aws_access_key_id` / `aws_secret_access_key` | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` |
+  | `postgresql_backup` / `postgresql_restore` | `BACKUP_PASSWORD` / `RESTORE_PASSWORD` |
+  | `age_identity` | `AGE_IDENTITY` |
+  | `slack_webhook_url` | `SLACK_WEBHOOK_URL` |
+
+- `dbPasswordSecret.backup_secret` / `restore_secret` became `backup.passwordSecret` / `restore.passwordSecret`
+  (`name`, `key`); there is no `enabled`, setting `name` is enough.
+- Values are validated: an unknown or misspelled value fails the install instead of being ignored.
+
+Upgrade notes of older versions are in the
+[README of 2.0.0](https://github.com/abohatyrenko/postgresql-backup-restore/blob/v2.0.0/README.md#upgrading-to-200).
 
 ## License
 

@@ -88,47 +88,41 @@ Name of the Secret holding credentials, empty if there is none
 {{/*
 Environment variables for a job. Each job only gets the credentials it needs:
 backup jobs never see the restore password / decryption key and vice versa.
-Usage: include "postgresql-backup-restore.env" (dict "root" $ "env" .Values.backup.env "component" "backup")
+Keys of the Secret are named after the variables they set.
+Usage: include "postgresql-backup-restore.env" (dict "root" $ "job" .Values.backup "component" "backup")
 */}}
 {{- define "postgresql-backup-restore.env" -}}
 {{- $root := .root }}
 {{- $secretName := include "postgresql-backup-restore.secretName" $root }}
-{{- $secretEnv := dict
-  "AWS_ACCESS_KEY_ID" "aws_access_key_id"
-  "AWS_SECRET_ACCESS_KEY" "aws_secret_access_key"
-  "SLACK_WEBHOOK_URL" "slack_webhook_url" }}
-{{- $dbSecret := $root.Values.dbPasswordSecret.backup_secret }}
-{{- $dbEnv := "PG_PASS_BACKUP" }}
-{{- $dbKey := "postgresql_backup" }}
+{{- $passwordEnv := printf "%s_PASSWORD" (upper .component) }}
+{{- $passwordSecret := .job.passwordSecret }}
+{{- $secretEnv := list "AWS_ACCESS_KEY_ID" "AWS_SECRET_ACCESS_KEY" "SLACK_WEBHOOK_URL" }}
 {{- if eq .component "restore" }}
-{{- $_ := set $secretEnv "AGE_IDENTITY" "age_identity" }}
-{{- $dbSecret = $root.Values.dbPasswordSecret.restore_secret }}
-{{- $dbEnv = "PG_PASS_RESTORE" }}
-{{- $dbKey = "postgresql_restore" }}
+{{- $secretEnv = append $secretEnv "AGE_IDENTITY" }}
 {{- end }}
-{{- if not $dbSecret.enabled }}
-{{- $_ := set $secretEnv $dbEnv $dbKey }}
+{{- if not $passwordSecret.name }}
+{{- $secretEnv = append $secretEnv $passwordEnv }}
 {{- end }}
 {{- /* With existingSecret, reference every key (optional: true skips missing ones);
        with the chart's own Secret, only the keys that have a value */}}
-{{- range $name, $key := $secretEnv }}
-{{- if or $root.Values.existingSecret (and $secretName (get $root.Values.secrets $key)) }}
+{{- range $name := $secretEnv }}
+{{- if or $root.Values.existingSecret (and $secretName (get $root.Values.secrets $name)) }}
 - name: {{ $name }}
   valueFrom:
     secretKeyRef:
       name: {{ $secretName }}
-      key: {{ $key }}
+      key: {{ $name }}
       optional: true
 {{- end }}
 {{- end }}
-{{- if $dbSecret.enabled }}
-- name: {{ $dbEnv }}
+{{- if $passwordSecret.name }}
+- name: {{ $passwordEnv }}
   valueFrom:
     secretKeyRef:
-      name: {{ required (printf "dbPasswordSecret.%s_secret.name is required" .component) $dbSecret.name }}
-      key: {{ $dbSecret.key | default $dbKey }}
+      name: {{ $passwordSecret.name }}
+      key: {{ $passwordSecret.key }}
 {{- end }}
-{{- range $name, $value := merge (dict) (.env | default dict) $root.Values.env }}
+{{- range $name, $value := merge (dict) .job.env $root.Values.env }}
 - name: {{ $name }}
   value: {{ $value | toString | quote }}
 {{- end }}
@@ -170,7 +164,7 @@ spec:
       {{- end }}
     spec:
       restartPolicy: Never
-      # Service links would inject variables like POSTGRESQL_BACKUP_PORT=tcp://... for a Service named "postgresql-backup"
+      # Service links would inject variables like BACKUP_PORT=tcp://... for a Service named "backup"
       enableServiceLinks: false
       serviceAccountName: {{ include "postgresql-backup-restore.serviceAccountName" $root }}
       automountServiceAccountToken: {{ $root.Values.serviceAccount.automountServiceAccountToken }}
@@ -194,7 +188,7 @@ spec:
           env:
             - name: WORK_DIR
               value: /work
-            {{- include "postgresql-backup-restore.env" (dict "root" $root "env" $job.env "component" .component) | trim | nindent 12 }}
+            {{- include "postgresql-backup-restore.env" (dict "root" $root "job" $job "component" .component) | trim | nindent 12 }}
           {{- with $root.Values.envFrom }}
           envFrom:
             {{- toYaml . | nindent 12 }}
