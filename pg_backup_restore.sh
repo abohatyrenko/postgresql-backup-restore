@@ -25,24 +25,24 @@ S3_BUCKET_PATH="${S3_BUCKET_PATH%/}"
 S3_ENDPOINT="${S3_ENDPOINT:-}"
 S3_PROVIDER="${S3_PROVIDER:-}"
 S3_UPLOAD_EXTRA_OPTS="${S3_UPLOAD_EXTRA_OPTS:-}"
-export AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-eu-central-1}}"
+S3_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
 
 # Backup source
-BACKUP_DATABASE_NAME="${BACKUP_DATABASE_NAME:-}"
-POSTGRESQL_BACKUP_HOST="${POSTGRESQL_BACKUP_HOST:-}"
-POSTGRESQL_BACKUP_PORT="${POSTGRESQL_BACKUP_PORT:-5432}"
-POSTGRESQL_BACKUP_USER="${POSTGRESQL_BACKUP_USER:-}"
-PG_PASS_BACKUP="${PG_PASS_BACKUP:-}"
+BACKUP_DATABASE="${BACKUP_DATABASE:-}"
+BACKUP_HOST="${BACKUP_HOST:-}"
+BACKUP_PORT="${BACKUP_PORT:-5432}"
+BACKUP_USER="${BACKUP_USER:-}"
+BACKUP_PASSWORD="${BACKUP_PASSWORD:-}"
 PG_DUMP_EXTRA_OPTS="${PG_DUMP_EXTRA_OPTS:-}"
 BACKUP_KEEP_DAYS="${BACKUP_KEEP_DAYS:-0}"
 
 # Restore target
-RESTORE_DATABASE_NAME="${RESTORE_DATABASE_NAME:-}"
-RESTORE_SOURCE_NAME="${RESTORE_SOURCE_NAME:-${BACKUP_DATABASE_NAME:-$RESTORE_DATABASE_NAME}}"
-POSTGRESQL_RESTORE_HOST="${POSTGRESQL_RESTORE_HOST:-}"
-POSTGRESQL_RESTORE_PORT="${POSTGRESQL_RESTORE_PORT:-5432}"
-POSTGRESQL_RESTORE_USER="${POSTGRESQL_RESTORE_USER:-}"
-PG_PASS_RESTORE="${PG_PASS_RESTORE:-}"
+RESTORE_DATABASE="${RESTORE_DATABASE:-}"
+RESTORE_SOURCE_DATABASE="${RESTORE_SOURCE_DATABASE:-${BACKUP_DATABASE:-$RESTORE_DATABASE}}"
+RESTORE_HOST="${RESTORE_HOST:-}"
+RESTORE_PORT="${RESTORE_PORT:-5432}"
+RESTORE_USER="${RESTORE_USER:-}"
+RESTORE_PASSWORD="${RESTORE_PASSWORD:-}"
 RESTORE_CONFIRM="${RESTORE_CONFIRM:-}"
 RESTORE_ROLE="${RESTORE_ROLE:-}"
 RESTORE_CLEAN="${RESTORE_CLEAN:-true}"
@@ -75,7 +75,6 @@ export PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-30}"
 export RCLONE_CONFIG="${RCLONE_CONFIG:-/dev/null}"
 export RCLONE_CONFIG_S3URL_TYPE=s3
 export RCLONE_CONFIG_S3URL_ENV_AUTH=true
-export RCLONE_CONFIG_S3URL_REGION="$AWS_REGION"
 # Backup credentials usually may not create buckets
 export RCLONE_CONFIG_S3URL_NO_CHECK_BUCKET=true
 if [[ -n "$S3_ENDPOINT" ]]; then
@@ -87,10 +86,13 @@ if [[ -n "$S3_ENDPOINT" ]]; then
 else
   export RCLONE_CONFIG_S3URL_PROVIDER="${S3_PROVIDER:-AWS}"
 fi
+if [[ -n "$S3_REGION" ]]; then export RCLONE_CONFIG_S3URL_REGION="$S3_REGION"; fi
 
 COMMAND="${1:-}"
 TMP_DIR=""
 SUMMARY=""
+# Set when the command ran to its end, see on_exit
+FINISHED=""
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -133,6 +135,9 @@ ping_url() {
 
 on_exit() {
   local rc=$?
+  # When the shell is killed by a signal (job deadline, pod eviction), $? is the status of the
+  # last finished command, usually 0: without this an interrupted run is reported as a success.
+  if ((rc == 0)) && [[ -z "$FINISHED" ]]; then rc=143; fi
   [[ -n "$TMP_DIR" && -d "$TMP_DIR" ]] && rm -rf -- "$TMP_DIR"
   case "$COMMAND" in backup | restore) ;; *) return "$rc" ;; esac
 
@@ -168,27 +173,12 @@ rcl() {
 # Prints backup file names under s3 "directory" $1, oldest first (by upload time, not by name).
 # A directory that does not exist yet has no backups; any other listing error is fatal,
 # so that a restore never reports "no backups" because the bucket was not readable.
-# *.tar.gz are backups from image 0.x: custom-format dumps despite the extension, so pg_restore reads them.
 list_backups() {
   local listing status=0
   listing="$(rcl lsf --files-only --use-server-modtime --format tp --separator $'\t' "${1}/")" || status=$?
   # rclone exit code 3: directory not found
   ((status == 0 || status == 3)) || die "cannot list ${1}/ (rclone exit code ${status})"
-  sort -t $'\t' -k1,1 <<<"$listing" | cut -f2- | grep -E '\.(dump|dump\.age|tar\.gz)$' || true
-}
-
-# S3_UPLOAD_EXTRA_OPTS took `aws s3 cp` options before 2.0.0. Checked before the dump,
-# which may take hours, instead of failing at the upload.
-check_upload_opts() {
-  local opt opts=()
-  read -r -a opts <<<"$S3_UPLOAD_EXTRA_OPTS"
-  for opt in "${opts[@]}"; do
-    case "${opt%%=*}" in
-      --sse | --sse-c | --sse-c-key | --sse-kms-key-id | --storage-class | --acl | --grants | --content-type | --cache-control | --expires)
-        die "S3_UPLOAD_EXTRA_OPTS has the aws-cli option ${opt%%=*}; since image 2.0.0 it takes rclone flags, e.g. --s3-server-side-encryption AES256 --s3-storage-class STANDARD_IA (https://rclone.org/s3/)"
-        ;;
-    esac
-  done
+  sort -t $'\t' -k1,1 <<<"$listing" | cut -f2- | grep -E '\.dump(\.age)?$' || true
 }
 
 validate_dump() {
@@ -201,15 +191,14 @@ validate_dump() {
 # ---------------------------------------------------------------------------
 
 do_backup() {
-  require_env S3_BUCKET_PATH BACKUP_DATABASE_NAME POSTGRESQL_BACKUP_HOST POSTGRESQL_BACKUP_USER
+  require_env S3_BUCKET_PATH BACKUP_DATABASE BACKUP_HOST BACKUP_USER
   [[ "$BACKUP_KEEP_DAYS" =~ ^[0-9]+$ ]] || die "BACKUP_KEEP_DAYS must be a non-negative integer"
-  check_upload_opts
 
   local timestamp file_name s3_dir local_file upload_file s3_target
   timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
-  file_name="${BACKUP_DATABASE_NAME}-${timestamp}.dump"
-  s3_dir="${S3_BUCKET_PATH}/${BACKUP_DATABASE_NAME}"
-  SUMMARY="of ${BACKUP_DATABASE_NAME}@${POSTGRESQL_BACKUP_HOST}"
+  file_name="${BACKUP_DATABASE}-${timestamp}.dump"
+  s3_dir="${S3_BUCKET_PATH}/${BACKUP_DATABASE}"
+  SUMMARY="of ${BACKUP_DATABASE}@${BACKUP_HOST}"
 
   make_tmp_dir
   local_file="${TMP_DIR}/${file_name}"
@@ -217,12 +206,12 @@ do_backup() {
   local -a dump_opts=()
   read -r -a dump_opts <<<"$PG_DUMP_EXTRA_OPTS"
 
-  info "dumping ${BACKUP_DATABASE_NAME} from ${POSTGRESQL_BACKUP_HOST}:${POSTGRESQL_BACKUP_PORT} (sslmode=${PGSSLMODE})"
-  PGPASSWORD="$PG_PASS_BACKUP" pg_dump \
-    --host="$POSTGRESQL_BACKUP_HOST" \
-    --port="$POSTGRESQL_BACKUP_PORT" \
-    --username="$POSTGRESQL_BACKUP_USER" \
-    --dbname="$BACKUP_DATABASE_NAME" \
+  info "dumping ${BACKUP_DATABASE} from ${BACKUP_HOST}:${BACKUP_PORT} (sslmode=${PGSSLMODE})"
+  PGPASSWORD="$BACKUP_PASSWORD" pg_dump \
+    --host="$BACKUP_HOST" \
+    --port="$BACKUP_PORT" \
+    --username="$BACKUP_USER" \
+    --dbname="$BACKUP_DATABASE" \
     --format=custom \
     --no-password \
     --file="$local_file" \
@@ -250,39 +239,51 @@ do_backup() {
   rcl copyto "${upload_opts[@]}" "$upload_file" "$s3_target"
 
   SUMMARY="${SUMMARY} -> ${s3_target}"
-  [[ "$BACKUP_KEEP_DAYS" -gt 0 ]] && prune_backups "$s3_dir"
+  # 10#: a value like 08 is decimal, not invalid octal
+  if ((10#$BACKUP_KEEP_DAYS > 0)); then prune_backups "$s3_dir"; fi
 
   info "backup finished: ${s3_target}"
 }
 
 # Deletes backups older than BACKUP_KEEP_DAYS. Only files following the
 # <db>-<YYYYmmddTHHMMSSZ>.dump[.age] naming are considered; the newest backup is always kept.
+# The new backup is already uploaded when this runs, so a failure here is reported but does
+# not fail the backup: a failed job would be retried and dump the database once more.
 prune_backups() {
-  local s3_dir="$1" cutoff listing name ts newest
-  cutoff="$(date -u -d "-${BACKUP_KEEP_DAYS} days" +%Y%m%dT%H%M%SZ)"
-  # Not read in a process substitution, where a listing error would not stop the script
-  listing="$(list_backups "$s3_dir")"
+  local s3_dir="$1" cutoff listing name ts newest not_deleted=0
+  cutoff="$(date -u -d "-$((10#$BACKUP_KEEP_DAYS)) days" +%Y%m%dT%H%M%SZ)"
+  # Not read in a process substitution, where a listing error would go unnoticed
+  if ! listing="$(list_backups "$s3_dir")"; then
+    report_prune_failure "expired backups were not removed"
+    return 0
+  fi
   newest="$(tail -n 1 <<<"$listing")"
   info "removing backups older than ${BACKUP_KEEP_DAYS} day(s) (before ${cutoff})"
 
-  local pattern="^${BACKUP_DATABASE_NAME//./\\.}-([0-9]{8}T[0-9]{6}Z)\\.dump(\\.age)?$"
+  local pattern="^${BACKUP_DATABASE//./\\.}-([0-9]{8}T[0-9]{6}Z)\\.dump(\\.age)?$"
   while IFS= read -r name; do
     [[ "$name" =~ $pattern ]] || continue
     ts="${BASH_REMATCH[1]}"
     if [[ "$ts" < "$cutoff" && "$name" != "$newest" ]]; then
       info "deleting expired backup ${name}"
-      rcl deletefile "${s3_dir}/${name}"
+      rcl deletefile "${s3_dir}/${name}" || not_deleted=$((not_deleted + 1))
     fi
   done <<<"$listing"
+  if ((not_deleted > 0)); then report_prune_failure "${not_deleted} expired backup(s) could not be deleted"; fi
+}
+
+report_prune_failure() {
+  warn "$1"
+  [[ "$NOTIFY_ON" == "never" ]] || notify_slack ":warning: backup ${SUMMARY} succeeded, but $1; check the job logs"
 }
 
 do_restore() {
-  require_env S3_BUCKET_PATH RESTORE_DATABASE_NAME RESTORE_SOURCE_NAME POSTGRESQL_RESTORE_HOST POSTGRESQL_RESTORE_USER
-  [[ "$RESTORE_CONFIRM" == "$RESTORE_DATABASE_NAME" ]] \
-    || die "restore overwrites ${RESTORE_DATABASE_NAME}@${POSTGRESQL_RESTORE_HOST}; set RESTORE_CONFIRM=${RESTORE_DATABASE_NAME} to proceed"
+  require_env S3_BUCKET_PATH RESTORE_DATABASE RESTORE_SOURCE_DATABASE RESTORE_HOST RESTORE_USER
+  [[ "$RESTORE_CONFIRM" == "$RESTORE_DATABASE" ]] \
+    || die "restore overwrites ${RESTORE_DATABASE}@${RESTORE_HOST}; set RESTORE_CONFIRM=${RESTORE_DATABASE} to proceed"
 
-  local s3_dir="${S3_BUCKET_PATH}/${RESTORE_SOURCE_NAME}" file_name="${1:-}" local_file listing
-  SUMMARY="of ${RESTORE_DATABASE_NAME}@${POSTGRESQL_RESTORE_HOST}"
+  local s3_dir="${S3_BUCKET_PATH}/${RESTORE_SOURCE_DATABASE}" file_name="${1:-}" local_file listing
+  SUMMARY="of ${RESTORE_DATABASE}@${RESTORE_HOST}"
 
   if [[ -z "$file_name" ]]; then
     listing="$(list_backups "$s3_dir")"
@@ -327,14 +328,14 @@ do_restore() {
   # (e.g. "SET transaction_timeout" from v17), which are dropped from the preamble here.
   # The preamble is a few dozen lines; only the first 100 are filtered so a table row
   # that happens to look like this setting is never touched.
-  info "restoring into ${RESTORE_DATABASE_NAME} on ${POSTGRESQL_RESTORE_HOST}:${POSTGRESQL_RESTORE_PORT} (sslmode=${PGSSLMODE})"
+  info "restoring into ${RESTORE_DATABASE} on ${RESTORE_HOST}:${RESTORE_PORT} (sslmode=${PGSSLMODE})"
   pg_restore --file=- "${restore_opts[@]}" "${extra_opts[@]}" "$local_file" \
     | awk 'NR <= 100 && /^SET transaction_timeout = /{ next } { print }' \
-    | PGPASSWORD="$PG_PASS_RESTORE" psql \
-      --host="$POSTGRESQL_RESTORE_HOST" \
-      --port="$POSTGRESQL_RESTORE_PORT" \
-      --username="$POSTGRESQL_RESTORE_USER" \
-      --dbname="$RESTORE_DATABASE_NAME" \
+    | PGPASSWORD="$RESTORE_PASSWORD" psql \
+      --host="$RESTORE_HOST" \
+      --port="$RESTORE_PORT" \
+      --username="$RESTORE_USER" \
+      --dbname="$RESTORE_DATABASE" \
       --no-password \
       --no-psqlrc \
       --quiet \
@@ -342,21 +343,21 @@ do_restore() {
       "${psql_opts[@]}" \
       >/dev/null
 
-  info "restore finished: ${RESTORE_DATABASE_NAME} from ${file_name}"
+  info "restore finished: ${RESTORE_DATABASE} from ${file_name}"
 }
 
 do_list() {
   require_env S3_BUCKET_PATH
-  local name="${1:-${BACKUP_DATABASE_NAME:-$RESTORE_SOURCE_NAME}}"
-  [[ -n "$name" ]] || die "pass a database name or set BACKUP_DATABASE_NAME"
+  local name="${1:-${BACKUP_DATABASE:-$RESTORE_SOURCE_DATABASE}}"
+  [[ -n "$name" ]] || die "pass a database name or set BACKUP_DATABASE"
   list_backups "${S3_BUCKET_PATH}/${name}"
 }
 
 usage() {
   cat >&2 <<EOF
 Usage:
-  ${SCRIPT_NAME} backup                 dump BACKUP_DATABASE_NAME and upload it to S3
-  ${SCRIPT_NAME} restore [file-name]    restore RESTORE_DATABASE_NAME (latest backup if no file given)
+  ${SCRIPT_NAME} backup                 dump BACKUP_DATABASE and upload it to S3
+  ${SCRIPT_NAME} restore [file-name]    restore RESTORE_DATABASE (latest backup if no file given)
   ${SCRIPT_NAME} list [database-name]   list available backups, oldest first
 EOF
 }
@@ -368,3 +369,4 @@ case "$COMMAND" in
   -h | --help | help) usage ;;
   *) usage; exit 64 ;;
 esac
+FINISHED=1

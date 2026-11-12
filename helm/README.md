@@ -5,10 +5,7 @@ Runs [postgresql-backup-restore](https://github.com/abohatyrenko/postgresql-back
 ## Install
 
 ```sh
-helm repo add postgresql-backup-restore https://abohatyrenko.github.io/postgresql-backup-restore/helm
-helm repo update
-
-helm upgrade --install pg-backup postgresql-backup-restore/postgresql-backup-restore -f values.yaml
+helm upgrade --install pg-backup oci://ghcr.io/abohatyrenko/charts/postgresql-backup-restore -f values.yaml
 
 # Uninstall
 helm uninstall pg-backup
@@ -29,14 +26,14 @@ env:
   S3_BUCKET_PATH: s3://my-space/postgresql
   S3_ENDPOINT: https://fra1.digitaloceanspaces.com
   AWS_REGION: fra1
-  BACKUP_DATABASE_NAME: app
-  POSTGRESQL_BACKUP_HOST: db-postgresql-fra1-12345-do-user-1-0.b.db.ondigitalocean.com
-  POSTGRESQL_BACKUP_PORT: "25060"
-  POSTGRESQL_BACKUP_USER: backup
+  BACKUP_DATABASE: app
+  BACKUP_HOST: db-postgresql-fra1-12345-do-user-1-0.b.db.ondigitalocean.com
+  BACKUP_PORT: "25060"
+  BACKUP_USER: backup
   PGSSLMODE: verify-full
   PGSSLROOTCERT: /etc/pg-ca/ca-certificate.crt
 
-# Secret with keys aws_access_key_id, aws_secret_access_key, postgresql_backup, slack_webhook_url
+# Secret with keys AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, BACKUP_PASSWORD, SLACK_WEBHOOK_URL
 existingSecret: pg-backup
 
 extraVolumes:
@@ -73,12 +70,12 @@ restore:
 env:
   S3_BUCKET_PATH: s3://my-space/postgresql
   S3_ENDPOINT: https://fra1.digitaloceanspaces.com
-  RESTORE_SOURCE_NAME: app
-  RESTORE_DATABASE_NAME: app_staging
-  POSTGRESQL_RESTORE_HOST: staging-db.example.com
-  POSTGRESQL_RESTORE_PORT: "25060"
-  POSTGRESQL_RESTORE_USER: app_staging
-existingSecret: pg-restore # aws_*, postgresql_restore, age_identity
+  RESTORE_SOURCE_DATABASE: app
+  RESTORE_DATABASE: app_staging
+  RESTORE_HOST: staging-db.example.com
+  RESTORE_PORT: "25060"
+  RESTORE_USER: app_staging
+existingSecret: pg-restore # AWS_*, RESTORE_PASSWORD, AGE_IDENTITY
 ```
 
 The restore CronJob is suspended and never scheduled. Start a restore of the latest backup with:
@@ -91,7 +88,7 @@ To restore a specific backup, set `restore.args: ["restore", "app-20261030T02000
 
 ## Values
 
-See [values.yaml](https://github.com/abohatyrenko/postgresql-backup-restore/blob/main/helm/values.yaml) for all options. The most important ones:
+See [values.yaml](https://github.com/abohatyrenko/postgresql-backup-restore/blob/main/helm/values.yaml) for all options. Unknown values are rejected. The most important ones:
 
 | Key | Default | Description |
 |---|---|---|
@@ -99,9 +96,9 @@ See [values.yaml](https://github.com/abohatyrenko/postgresql-backup-restore/blob
 | `backup.schedule` / `backup.timeZone` | `0 11 * * *` / controller time zone | |
 | `backup.env` / `restore.env` / `env` | `{}` | Environment variables for backup jobs / restore jobs / both |
 | `restore.enabled` | `false` | Create the suspended restore CronJob |
-| `existingSecret` | | Secret with `aws_access_key_id`, `aws_secret_access_key`, `postgresql_backup`, `postgresql_restore`, `age_identity`, `slack_webhook_url` (all optional) |
+| `existingSecret` | | Secret with keys named after the variables they set: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `BACKUP_PASSWORD`, `RESTORE_PASSWORD`, `AGE_IDENTITY`, `SLACK_WEBHOOK_URL` (all optional) |
 | `secrets.*` | | Values for a Secret created by the chart when `existingSecret` is empty |
-| `dbPasswordSecret.{backup,restore}_secret` | disabled | Read DB passwords from dedicated Secrets |
+| `backup.passwordSecret` / `restore.passwordSecret` | | `name` and `key` of a dedicated Secret with the database password |
 | `serviceAccount.annotations` | `{}` | e.g. `eks.amazonaws.com/role-arn` for IRSA instead of static AWS keys |
 | `workDir.sizeLimit` | `10Gi` | Scratch space for the dump; must fit the whole compressed dump |
 | `workDir.volume` | emptyDir | Custom volume for large databases (e.g. an ephemeral PVC) |

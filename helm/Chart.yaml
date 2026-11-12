@@ -5,8 +5,8 @@ type: application
 
 # The chart and the image share one version: version, appVersion and the image in
 # artifacthub.io/images below must be equal (checked by scripts/check-version.sh).
-version: 2.0.0
-appVersion: "2.0.0"
+version: 3.0.0
+appVersion: "3.0.0"
 
 kubeVersion: ">=1.21.0-0"
 home: https://github.com/abohatyrenko/postgresql-backup-restore
@@ -38,15 +38,25 @@ annotations:
       url: https://hub.docker.com/r/abohatyrenko/postgresql-backup-restore
   artifacthub.io/images: |
     - name: postgresql-backup-restore
-      image: abohatyrenko/postgresql-backup-restore:2.0.0
+      image: abohatyrenko/postgresql-backup-restore:3.0.0
   artifacthub.io/changes: |
     - kind: changed
-      description: Image is 158 MB instead of 514 MB; built on alpine with only the PostgreSQL client tools, S3 is accessed with rclone instead of the AWS CLI
+      description: "Breaking: connection variables follow one scheme, e.g. BACKUP_HOST, BACKUP_PASSWORD, RESTORE_DATABASE"
     - kind: changed
-      description: "Breaking: S3_UPLOAD_EXTRA_OPTS takes rclone flags instead of aws s3 cp options; see Upgrading to 2.0.0 in the README"
+      description: "Breaking: Secret keys are named after the variables they set (BACKUP_PASSWORD, AWS_ACCESS_KEY_ID, ...); dbPasswordSecret became backup.passwordSecret / restore.passwordSecret"
+    - kind: changed
+      description: "Breaking: the chart is published to oci://ghcr.io/abohatyrenko/charts, the Helm repository on GitHub Pages is gone"
+    - kind: changed
+      description: "Breaking: AWS_REGION has no default (was eu-central-1)"
     - kind: added
-      description: S3_PROVIDER for the rclone S3 provider of S3-compatible storage
+      description: Values are validated with a JSON schema, a misspelled value fails the install
+    - kind: changed
+      description: PostgreSQL 18 client tools, so servers up to version 18 can be backed up
     - kind: fixed
-      description: restore and list fail when the bucket can't be listed instead of reporting no backups
-    - kind: removed
-      description: Script path /opt/pg_backup_restore.sh of image 0.x
+      description: A backup or restore killed by SIGTERM (job deadline, pod eviction) is reported as failed to Slack and the heartbeat, not as a success
+    - kind: fixed
+      description: BACKUP_KEEP_DAYS with a leading zero (e.g. 08) no longer skips the cleanup silently
+    - kind: changed
+      description: A failed cleanup of expired backups is reported (log, Slack) without failing the backup, which is already uploaded
+    - kind: fixed
+      description: deployNotification no longer fails the release when the Secret has no SLACK_WEBHOOK_URL key; its pod follows nodeSelector and tolerations

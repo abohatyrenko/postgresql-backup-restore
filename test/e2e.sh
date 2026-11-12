@@ -6,19 +6,19 @@
 # Usage: test/e2e.sh [image-tag]
 #
 # Environment:
-#   SOURCE_PG_VERSION  postgres version to back up from (default 14)
-#   TARGET_PG_VERSION  postgres version to restore into, also used for the TLS server (default 17)
+#   SOURCE_PG_VERSION  postgres version to back up from (default 15)
+#   TARGET_PG_VERSION  postgres version to restore into, also used for the TLS server (default 18)
 #   SKIP_BUILD         set to reuse an already built image
-#   S3_IMAGE           S3-compatible server image (default chrislusf/seaweedfs:latest)
+#   S3_IMAGE           S3-compatible server image (default chrislusf/seaweedfs:4.53)
 
 set -Eeuo pipefail
 
 cd "$(dirname "$0")/.."
 
 IMAGE="${1:-postgresql-backup-restore:e2e}"
-SOURCE_PG_VERSION="${SOURCE_PG_VERSION:-14}"
-TARGET_PG_VERSION="${TARGET_PG_VERSION:-17}"
-S3_IMAGE="${S3_IMAGE:-chrislusf/seaweedfs:latest}"
+SOURCE_PG_VERSION="${SOURCE_PG_VERSION:-15}"
+TARGET_PG_VERSION="${TARGET_PG_VERSION:-18}"
+S3_IMAGE="${S3_IMAGE:-chrislusf/seaweedfs:4.53}"
 ID="pgbr-e2e-$$"
 NET="$ID"
 PASS="s3cr3t:p@ss'word"
@@ -58,7 +58,7 @@ AGE_PUB="$(grep -o 'age1[0-9a-z]*' <<<"$AGE_KEY")"
 
 log "generating TLS certificates (test CA, server certificate for $ID-tls, unrelated CA)"
 docker volume create "$ID-certs" >/dev/null
-docker run --rm -v "$ID-certs:/certs" alpine:3 sh -euc "
+docker run --rm -v "$ID-certs:/certs" alpine:3.24 sh -euc "
   apk add --no-cache -q openssl >/dev/null
   cd /certs
   for ca in ca other-ca; do
@@ -113,14 +113,14 @@ COMMON_ENV=(
   -e RCLONE_CONFIG_E2E_ENDPOINT="http://$ID-s3:8333"
   -e S3_BUCKET_PATH=s3://backups/postgresql
   -e PGSSLMODE=disable
-  -e BACKUP_DATABASE_NAME=app
-  -e POSTGRESQL_BACKUP_HOST="$ID-src"
-  -e POSTGRESQL_BACKUP_USER=postgres
-  -e PG_PASS_BACKUP="$PASS"
-  -e RESTORE_DATABASE_NAME=app_staging
-  -e POSTGRESQL_RESTORE_HOST="$ID-dst"
-  -e POSTGRESQL_RESTORE_USER=postgres
-  -e PG_PASS_RESTORE="$PASS"
+  -e BACKUP_DATABASE=app
+  -e BACKUP_HOST="$ID-src"
+  -e BACKUP_USER=postgres
+  -e BACKUP_PASSWORD="$PASS"
+  -e RESTORE_DATABASE=app_staging
+  -e RESTORE_HOST="$ID-dst"
+  -e RESTORE_USER=postgres
+  -e RESTORE_PASSWORD="$PASS"
 )
 # run_no_aws_keys: without AWS_ENV, for the credential chain tests at the end
 run_no_aws_keys() { docker run --rm --network "$NET" --read-only --tmpfs /tmp "${COMMON_ENV[@]}" "$@"; }
@@ -171,33 +171,21 @@ run -e PG_DUMP_EXTRA_OPTS="--compress=9" "$IMAGE" backup
 file="$(run "$IMAGE" list | grep -E '\.dump$' | tail -n 1)"
 run -e RESTORE_CONFIRM=app_staging "$IMAGE" restore "$file"
 
-log "restore of a backup made by image 0.x (custom-format dump named *.tar.gz)"
-run --entrypoint rclone "$IMAGE" copyto \
-  "e2e:backups/postgresql/app/$file" e2e:backups/postgresql/app/app-2022-08-01.tar.gz
-run "$IMAGE" list | grep -qx 'app-2022-08-01.tar.gz' || fail "0.x backup is not listed"
-run -e RESTORE_CONFIRM=app_staging "$IMAGE" restore app-2022-08-01.tar.gz
-
 log "S3_UPLOAD_EXTRA_OPTS with rclone flags (multipart upload, checksum verified by rclone)"
 before="$(run "$IMAGE" list | wc -l)"
 run -e S3_UPLOAD_EXTRA_OPTS="--s3-upload-cutoff=0 --s3-chunk-size=5Mi" "$IMAGE" backup
 after="$(run "$IMAGE" list | wc -l)"
 ((after == before + 1)) || fail "backup with S3_UPLOAD_EXTRA_OPTS did not upload ($before -> $after backups)"
 
-log "S3_UPLOAD_EXTRA_OPTS with aws-cli options (image 1.x) must fail before the dump"
-if out="$(run -e S3_UPLOAD_EXTRA_OPTS="--sse AES256" "$IMAGE" backup 2>&1)"; then
-  fail "backup accepted aws-cli options in S3_UPLOAD_EXTRA_OPTS"
-fi
-grep -q 'rclone flags' <<<"$out" || fail "no hint about rclone flags: $out"
-grep -q 'dumping' <<<"$out" && fail "the dump ran before S3_UPLOAD_EXTRA_OPTS was checked"
-
-log "restore into an older server (pg_restore ${TARGET_PG_VERSION} -> postgres ${SOURCE_PG_VERSION})"
+# In the "up" run the source server is the older one, so this is a restore into an older server
+log "restore into the source server (postgres ${SOURCE_PG_VERSION})"
 psql_in "$ID-src" postgres "CREATE DATABASE app_old"
-run -e RESTORE_CONFIRM=app_old -e RESTORE_DATABASE_NAME=app_old -e POSTGRESQL_RESTORE_HOST="$ID-src" "$IMAGE" restore "$file"
+run -e RESTORE_CONFIRM=app_old -e RESTORE_DATABASE=app_old -e RESTORE_HOST="$ID-src" "$IMAGE" restore "$file"
 users="$(psql_in "$ID-src" app_old 'SELECT count(*) FROM public.users')"
 [[ "$users" == 1000 ]] || fail "expected 1000 users in app_old, got $users"
 
 log "failed restore must exit non-zero"
-if run -e RESTORE_CONFIRM=app_staging -e POSTGRESQL_RESTORE_USER=nobody "$IMAGE" restore "$file"; then
+if run -e RESTORE_CONFIRM=app_staging -e RESTORE_USER=nobody "$IMAGE" restore "$file"; then
   fail "restore with bad credentials reported success"
 fi
 
@@ -223,11 +211,11 @@ TLS_ENV=(
   -v "$ID-certs:/certs:ro"
   -e PGSSLMODE=verify-full
   -e PGSSLROOTCERT=/certs/ca.crt
-  -e BACKUP_DATABASE_NAME=tls_app
-  -e POSTGRESQL_BACKUP_HOST="$ID-tls"
-  -e RESTORE_DATABASE_NAME=tls_restore
+  -e BACKUP_DATABASE=tls_app
+  -e BACKUP_HOST="$ID-tls"
+  -e RESTORE_DATABASE=tls_restore
   -e RESTORE_CONFIRM=tls_restore
-  -e POSTGRESQL_RESTORE_HOST="$ID-tls"
+  -e RESTORE_HOST="$ID-tls"
 )
 
 log "backup + restore over TLS with certificate verification (verify-full)"
@@ -242,13 +230,13 @@ if run "${TLS_ENV[@]}" -e PGSSLROOTCERT=/certs/other-ca.crt "$IMAGE" backup; the
 fi
 
 log "verify-full must reject a host name that is not in the certificate"
-if run "${TLS_ENV[@]}" -e POSTGRESQL_BACKUP_HOST="$ID-tls-alias" "$IMAGE" backup; then
+if run "${TLS_ENV[@]}" -e BACKUP_HOST="$ID-tls-alias" "$IMAGE" backup; then
   fail "verify-full accepted a host name mismatch"
 fi
 
 log "AWS credentials from a shared credentials file, no AWS_* keys in the environment"
 docker volume create "$ID-aws" >/dev/null
-docker run --rm -v "$ID-aws:/aws" alpine:3 sh -c \
+docker run --rm -v "$ID-aws:/aws" alpine:3.24 sh -c \
   'printf "[default]\naws_access_key_id = test-key\naws_secret_access_key = test-secret\n" >/aws/credentials && chmod 644 /aws/credentials'
 AWS_FILE_ENV=(-v "$ID-aws:/aws:ro" -e AWS_SHARED_CREDENTIALS_FILE=/aws/credentials)
 before="$(run_no_aws_keys "${AWS_FILE_ENV[@]}" "$IMAGE" list | wc -l)"
@@ -266,5 +254,14 @@ log "backup without any AWS credentials must fail"
 if run_no_aws_keys "$IMAGE" backup; then
   fail "backup succeeded without AWS credentials"
 fi
+
+log "backup killed by SIGTERM (job deadline, pod eviction) must be reported as failed"
+# pg_dump waits for the table lock, so the backup is still running when it is stopped
+docker exec -d -e PGPASSWORD="$PASS" "$ID-src" psql -U postgres -d app -c "BEGIN; LOCK TABLE public.users; SELECT pg_sleep(60)"
+(sleep 5 && docker stop "$ID-killed" >/dev/null) &
+out="$(run --name "$ID-killed" "$IMAGE" backup 2>&1)" || true
+wait
+grep -q 'dumping' <<<"$out" || fail "the backup did not start: $out"
+grep -q 'backup .* failed with exit code 143' <<<"$out" || fail "killed backup was not reported as failed: $out"
 
 log "ALL TESTS PASSED"
